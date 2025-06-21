@@ -1,4 +1,9 @@
-from mcp.server.fastmcp import FastMCP
+# Update the import path if FastMCP is in a different location, e.g.:
+# from fastmcp import FastMCP
+# or
+# from .fastmcp import FastMCP
+
+from fastmcp import FastMCP
 from tools import run_full_timeseries_pipeline
 
 mcp = FastMCP("bms_timeseries_prediction_mcp")
