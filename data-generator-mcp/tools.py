@@ -7,7 +7,11 @@ from sdv.evaluation.multi_table import evaluate_quality, get_column_plot
 
 
 def generate(folder_name: str):
-    """Generate synthetic data based on real data using SDV Synthesizer."""
+    """
+    Generate synthetic data using SDV for all CSVs in the specified folder.
+    - Requires folder to have: metadata.json and one CSV per table described.
+    - Output: 'synthetic_data' folder with synthetic CSVs.
+    """
     # Check if the data folder exists
     if not os.path.exists(folder_name):
         raise FileNotFoundError(f"The folder {folder_name} does not exist.")
@@ -46,7 +50,11 @@ def generate(folder_name: str):
 
 
 def evaluate(folder_name: str):
-    """Evaluate the quality of synthetic data compared to real data."""
+    """
+    Evaluate synthetic data vs. real data using SDV.
+    - Requires synthetic data in 'synthetic_data' and real data in folder_name.
+    - Returns dict with overall score and per-table/column metrics.
+    """
     # Check if real and synthetic data folders exist
     if not os.path.exists(folder_name):
         raise FileNotFoundError(f"Real data folder not found: {folder_name}")
@@ -113,7 +121,11 @@ def visualize(
     column_name: str,
     visualization_folder: str = "evaluation_plots",
 ):
-    """Generate visualization comparing real and synthetic data for a specific column."""
+    """
+    Visualize the distribution of a specific column in a table for both real and synthetic data.
+    - Requires synthetic data in 'synthetic_data', real data in folder_name.
+    - Output: PNG saved to 'evaluation_plots'.
+    """
     # Check if real and synthetic data folders exist
     if not os.path.exists(folder_name):
         raise FileNotFoundError(f"Real data folder not found: {folder_name}")

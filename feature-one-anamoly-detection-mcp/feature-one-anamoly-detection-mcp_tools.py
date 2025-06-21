@@ -23,6 +23,15 @@ os.environ["TF_METAL_LOG_LEVEL"] = "1"
 
 # -------- Data Loading and Preparation --------
 def load_and_preprocess_data(data_path, chunksize=100000):
+    """
+    Loads and preprocesses battery sensor data for anomaly detection.
+    Handles outlier cleaning, feature engineering, MICE imputation, and scaling.
+    Input CSV must contain columns:
+        - CellVoltage, CellTemperature, InstantaneousCurrent, AmbientTemperature, CellSpecificGravity
+    Returns:
+        - scaled_features: np.ndarray of features for modeling
+        - data: pd.DataFrame (original + engineered columns)
+    """
     required_columns = [
         "CellVoltage", "CellTemperature", "InstantaneousCurrent", "AmbientTemperature", "CellSpecificGravity"
     ]
@@ -67,16 +76,28 @@ def load_and_preprocess_data(data_path, chunksize=100000):
 
 # --------- Anomaly Detection Models ----------
 def run_one_class_svm(X, nu=0.05, kernel="rbf", gamma="scale"):
+    """
+    Trains a One-Class SVM for anomaly detection.
+    Returns SVM decision function scores (lower = more anomalous).
+    """
     model = OneClassSVM(nu=nu, kernel=kernel, gamma=gamma)
     model.fit(X)
     return model.decision_function(X)
 
 def run_isolation_forest(X, contamination=0.05):
+    """
+    Trains an Isolation Forest for anomaly detection.
+    Returns Isolation Forest anomaly scores (higher = more anomalous).
+    """
     model = IsolationForest(contamination=contamination, random_state=42, n_estimators=500, max_samples=0.9)
     model.fit(X)
     return -model.decision_function(X)
 
 def run_variational_autoencoder(X):
+    """
+    Trains a Variational Autoencoder and uses reconstruction error as anomaly score.
+    Returns array of reconstruction errors.
+    """
     input_dim = X.shape[1]
     latent_dim = 8
     log_dir = "logs/vae/" + datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -102,11 +123,23 @@ def run_variational_autoencoder(X):
     return np.mean(np.square(X - reconstructed), axis=1)
 
 def hybrid_anomaly_scoring(svm_scores, iforest_scores, vae_scores):
+    """
+    Combines scores from SVM, Isolation Forest, and VAE into a single hybrid anomaly score (normalized sum).
+    """
     # Normalize and sum for hybrid score
     def norm(x): return (x - np.min(x)) / (np.max(x) - np.min(x) + 1e-8)
     return norm(svm_scores) + norm(iforest_scores) + norm(vae_scores)
 
 def run_hybrid_anomaly_detection(data_path, chunksize=100000):
+    """
+    Full anomaly detection pipeline:
+        - Loads and preprocesses data
+        - Runs SVM, Isolation Forest, VAE
+        - Combines scores, thresholds top 5% as anomalies
+        - Outputs CSV with 'Hybrid Anomalies' column
+    Returns:
+        - Path to results CSV
+    """
     X, data = load_and_preprocess_data(data_path, chunksize)
     svm_scores = run_one_class_svm(X)
     iforest_scores = run_isolation_forest(X)
@@ -127,6 +160,10 @@ def run_3d_visualization(
     z_col="CellTemperature",
     out_path="anomaly_3d_plot.png"
 ):
+    """
+    Generates a 3D scatter plot of anomalies vs. normal points using three features.
+    Saves plot as PNG and returns absolute path.
+    """
     data = pd.read_csv(csv_path)
     fig = plt.figure(figsize=(12, 9))
     ax = fig.add_subplot(111, projection='3d')
