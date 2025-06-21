@@ -38,6 +38,9 @@ def timing_decorator(func):
 @timing_decorator
 def train_failure_model(data_path, target_column="IsDead"):
     df = pd.read_csv(data_path)
+    # --- Robustness Patch: Check required columns ---
+    if target_column not in df.columns:
+        raise ValueError(f"Missing required target column: {target_column}")
     X = df.drop(columns=[target_column])
     y = df[target_column]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -52,6 +55,11 @@ def train_failure_model(data_path, target_column="IsDead"):
 
 @timing_decorator
 def predict_failing_cells(model, df):
+    # --- Robustness Patch: Check required columns ---
+    if "IsDead" not in df.columns:
+        raise ValueError("Missing 'IsDead' column in data for prediction")
+    if "Cell ID" not in df.columns:
+        raise ValueError("Missing 'Cell ID' column in data for prediction")
     # Returns unique cell IDs predicted to fail
     predictions = model.predict(df.drop(columns=["IsDead"]))
     failure_cells = df.loc[predictions == 1, "Cell ID"].unique().tolist()

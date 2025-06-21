@@ -40,13 +40,18 @@ def timing_decorator(func):
 @timing_decorator
 def load_and_prepare_timeseries_data(file_path, cell_id, target_columns, lags=3):
     df = pd.read_csv(file_path)
-    df["Timestamp"] = pd.to_datetime(df["Timestamp"])
-    # Filter by cell_id
+    # --- Robustness Patch: Check columns ---
+    if "Timestamp" in df.columns:
+        df["Timestamp"] = pd.to_datetime(df["Timestamp"])
+    if "Cell ID" not in df.columns:
+        raise ValueError("Missing required column: 'Cell ID'")
     df = df[df["Cell ID"] == cell_id].copy()
     for col in target_columns:
         if col in df.columns:
             df[col] = df[col].interpolate(method="linear", limit_direction="both")
             df[col] = df[col].fillna(method="ffill").fillna(method="bfill")
+        else:
+            raise ValueError(f"Missing required target column: {col}")
     # Create lag features
     for target in target_columns:
         for lag in range(1, lags + 1):

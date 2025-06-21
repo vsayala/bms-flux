@@ -16,6 +16,9 @@ def setup_run_folder():
     run_folder = os.path.join("runs", year, month, day, job_run_id)
     os.makedirs(run_folder, exist_ok=True)
     log_path = os.path.join(run_folder, "preprocess-log.log")
+    # --- Robustness Patch: Remove old handlers to avoid log conflicts in agent chains ---
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
     logging.basicConfig(filename=log_path, level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", filemode='a')
     logging.info(f"Created folder structure for job run ID: {job_run_id}")
     return run_folder, job_run_id
@@ -98,6 +101,9 @@ def mean_impute_and_scale(df):
     imputer = SimpleImputer(strategy="mean")
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     df[numeric_cols] = imputer.fit_transform(df[numeric_cols])
+    # --- Robustness Patch: Check for remaining NaNs after imputation ---
+    if df[numeric_cols].isnull().any().any():
+        raise ValueError("NaNs remain after imputation. Check input data.")
     scaler = RobustScaler()
     df[numeric_cols] = scaler.fit_transform(df[numeric_cols])
     logging.info("Mean imputation and robust scaling complete.")

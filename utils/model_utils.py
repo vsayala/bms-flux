@@ -14,10 +14,10 @@ def save_model(model, feature: str, models_dir="models"):
             os.remove(latest_symlink)
         os.symlink(model_path, latest_symlink)
     except Exception:
-        # On Windows, symlink may not be allowed, so copy instead
+        # --- Robustness Patch: On Windows, symlink may not be allowed, so copy instead ---
         import shutil
         shutil.copy2(model_path, latest_symlink)
-    return model_path, latest_symlink
+    return os.path.abspath(model_path), os.path.abspath(latest_symlink)
 
 def load_latest_model(feature, models_dir="models"):
     symlink = os.path.join(models_dir, f"{feature}_model_latest.pkl")
