@@ -8,75 +8,142 @@ from tools import (
     preprocess_battery_data,
 )
 import pandas as pd
+import os
+import logging
 
 mcp = FastMCP("battery_preprocessing_mcp")
 
 @mcp.tool()
-def clean_and_filter_data(data_path: str, chunksize: int = 100000) -> str:
-    """
-    Load raw battery CSV data, remove outliers and obvious sensor errors, and return a temporary CSV path.
+def health_check() -> dict:
+    return {"status": "ok", "message": "MCP server is healthy", "cwd": os.getcwd()}
 
-    Returns processed file path (inside a unique run folder).
-    """
+def export_schema(df, out_path):
+    schema = {"columns": list(df.columns), "dtypes": {col: str(df[col].dtype) for col in df.columns}}
+    import json
+    with open(out_path, "w") as f:
+        json.dump(schema, f, indent=2)
+    logging.info(f"Exported schema to {out_path}")
+    return out_path
+
+@mcp.tool()
+def clean_and_filter_data(data_path: str, chunksize: int = 100000) -> dict:
     try:
         run_folder, _ = __import__("tools").setup_run_folder()
         df = read_and_filter_chunks(data_path, chunksize)
         out_path = save_processed_data(df, run_folder, "battery_cleaned.csv")
-        return f"Cleaned data saved to {out_path}"
+        schema_path = export_schema(df, os.path.join(run_folder, "battery_cleaned_schema.json"))
+        return {
+            "status": "success",
+            "message": f"Cleaned data saved to {out_path}",
+            "data": {"csv": out_path, "schema": schema_path},
+            "log_path": os.path.join(run_folder, "preprocess-log.log")
+        }
     except Exception as e:
-        return f"Error: {str(e)}"
+        return {
+            "status": "error",
+            "message": str(e),
+            "data": None,
+            "log_path": None
+        }
 
 @mcp.tool()
-def engineer_battery_features(csv_path: str) -> str:
-    """
-    Add engineered, lagged, rolling, and polynomial features to cleaned battery data.
-    """
+def engineer_battery_features(csv_path: str) -> dict:
     try:
         run_folder, _ = __import__("tools").setup_run_folder()
         df = pd.read_csv(csv_path)
         df = feature_engineering(df)
         out_path = save_processed_data(df, run_folder, "battery_with_features.csv")
-        return f"Feature-engineered data saved to {out_path}"
+        schema_path = export_schema(df, os.path.join(run_folder, "battery_with_features_schema.json"))
+        return {
+            "status": "success",
+            "message": f"Feature-engineered data saved to {out_path}",
+            "data": {"csv": out_path, "schema": schema_path},
+            "log_path": os.path.join(run_folder, "preprocess-log.log")
+        }
     except Exception as e:
-        return f"Error: {str(e)}"
+        return {
+            "status": "error",
+            "message": str(e),
+            "data": None,
+            "log_path": None
+        }
 
 @mcp.tool()
-def impute_battery_data_mice(csv_path: str) -> str:
-    """
-    Perform robust multivariate MICE imputation on core sensor columns of battery data.
-    """
+def impute_battery_data_mice(csv_path: str) -> dict:
     try:
         run_folder, _ = __import__("tools").setup_run_folder()
         df = pd.read_csv(csv_path)
         df = mice_imputation(df)
         out_path = save_processed_data(df, run_folder, "battery_mice_imputed.csv")
-        return f"MICE-imputed data saved to {out_path}"
+        schema_path = export_schema(df, os.path.join(run_folder, "battery_mice_imputed_schema.json"))
+        return {
+            "status": "success",
+            "message": f"MICE-imputed data saved to {out_path}",
+            "data": {"csv": out_path, "schema": schema_path},
+            "log_path": os.path.join(run_folder, "preprocess-log.log")
+        }
     except Exception as e:
-        return f"Error: {str(e)}"
+        return {
+            "status": "error",
+            "message": str(e),
+            "data": None,
+            "log_path": None
+        }
 
 @mcp.tool()
-def impute_and_scale_battery_data(csv_path: str) -> str:
-    """
-    Impute remaining missing values by mean imputation and scale all numeric features for ML-readiness.
-    """
+def impute_and_scale_battery_data(csv_path: str) -> dict:
     try:
         run_folder, _ = __import__("tools").setup_run_folder()
         df = pd.read_csv(csv_path)
         df = mean_impute_and_scale(df)
         out_path = save_processed_data(df, run_folder, "battery_final_scaled.csv")
-        return f"Data imputed (mean) and scaled. Saved to {out_path}"
+        schema_path = export_schema(df, os.path.join(run_folder, "battery_final_scaled_schema.json"))
+        return {
+            "status": "success",
+            "message": f"Data imputed (mean) and scaled. Saved to {out_path}",
+            "data": {"csv": out_path, "schema": schema_path},
+            "log_path": os.path.join(run_folder, "preprocess-log.log")
+        }
     except Exception as e:
-        return f"Error: {str(e)}"
+        return {
+            "status": "error",
+            "message": str(e),
+            "data": None,
+            "log_path": None
+        }
 
 @mcp.tool()
 def preprocess_battery_data_tool(
     data_path: str,
     chunksize: int = 100000
-) -> str:
-    """
-    Run the complete battery data preprocessing pipeline in one step.
-    """
-    return preprocess_battery_data(data_path, chunksize)
+) -> dict:
+    try:
+        msg = preprocess_battery_data(data_path, chunksize)
+        # Find latest run folder
+        from glob import glob
+        runs = glob("runs/*/*/*/*/")
+        runs.sort(reverse=True)
+        run_folder = runs[0] if runs else None
+        out_path = os.path.join(run_folder, "battery_preprocessed.csv") if run_folder else None
+        log_path = os.path.join(run_folder, "preprocess-log.log") if run_folder else None
+        schema_path = os.path.join(run_folder, "battery_preprocessed_schema.json") if run_folder else None
+        # Export schema if preprocessed file exists
+        if out_path and os.path.exists(out_path):
+            df = pd.read_csv(out_path)
+            export_schema(df, schema_path)
+        return {
+            "status": "success",
+            "message": msg,
+            "data": {"csv": out_path, "schema": schema_path},
+            "log_path": log_path
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": str(e),
+            "data": None,
+            "log_path": None
+        }
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")

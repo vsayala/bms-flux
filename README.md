@@ -120,6 +120,17 @@ uv run --with mcp server.py
 
 ---
 
+...
+## New Features
+
+- **Model versioning:** All models are saved with timestamps and a latest symlink.
+- **Standard output:** All tools return a dict with status, message, data, and log_path.
+- **Health checks:** Each MCP exposes a health_check tool for agent orchestration.
+- **Schema standardization:** All modules use a common schema (`schema/bms_schema.py`).
+- **Live inference:** Real-time prediction API in `live-inference/`.
+- **Pipeline automation:** Use `agent-driver/run_full_pipeline.py` for full workflow.
+...
+
 ## Developer Notes
 
 - Each MCP server is self-contained with its own dependencies and can be run independently.

@@ -6,6 +6,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score
+from utils.model_utils import save_model
 
 def setup_run_folder():
     current_datetime = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -42,10 +43,12 @@ def train_failure_model(data_path, target_column="IsDead"):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     model = XGBClassifier(random_state=42)
     model.fit(X_train, y_train)
+    # Save with versioning
+    model_path, _ = save_model(model, "failure_xgb", "models")
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
     logging.info(f"Failure Prediction Model Accuracy: {acc:.4f}")
-    return model, acc
+    return model, acc, model_path
 
 @timing_decorator
 def predict_failing_cells(model, df):
@@ -59,11 +62,12 @@ def predict_failing_cells(model, df):
 def run_full_failure_prediction_pipeline(data_path):
     plots_folder, job_run_id = setup_run_folder()
     df = pd.read_csv(data_path)
-    model, acc = train_failure_model(data_path)
+    model, acc, model_path = train_failure_model(data_path)
     failing_cells = predict_failing_cells(model, df)
     return {
         "accuracy": acc,
         "failing_cells": failing_cells,
         "job_run_id": job_run_id,
-        "plots_folder": os.path.abspath(plots_folder)
+        "plots_folder": os.path.abspath(plots_folder),
+        "model_path": model_path
     }

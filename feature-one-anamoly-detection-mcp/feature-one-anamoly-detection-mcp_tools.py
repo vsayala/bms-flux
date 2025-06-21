@@ -17,6 +17,7 @@ from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 from sklearn.experimental import enable_iterative_imputer
 from sklearn.impute import IterativeImputer
+from utils.model_utils import save_model
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
 os.environ["TF_METAL_LOG_LEVEL"] = "1"
@@ -141,8 +142,12 @@ def run_hybrid_anomaly_detection(data_path, chunksize=100000):
         - Path to results CSV
     """
     X, data = load_and_preprocess_data(data_path, chunksize)
-    svm_scores = run_one_class_svm(X)
-    iforest_scores = run_isolation_forest(X)
+    # Train models
+    svm = OneClassSVM(nu=0.05, kernel="rbf", gamma="scale").fit(X)
+    iforest = IsolationForest(contamination=0.05, random_state=42, n_estimators=500, max_samples=0.9).fit(X)
+    vae = None  # Placeholder, if you want to pickle Keras models, use model.save('h5')
+    svm_scores = svm.decision_function(X)
+    iforest_scores = -iforest.decision_function(X)
     vae_scores = run_variational_autoencoder(X)
     hybrid_scores = hybrid_anomaly_scoring(svm_scores, iforest_scores, vae_scores)
     threshold = np.percentile(hybrid_scores, 95)
@@ -150,7 +155,12 @@ def run_hybrid_anomaly_detection(data_path, chunksize=100000):
     data["Hybrid Anomalies"] = hybrid_anomalies
     out_path = "hybrid_results.csv"
     data.to_csv(out_path, index=False)
-    return out_path
+    # Model versioning
+    models_dir = "models"
+    svm_path, _ = save_model(svm, "anomaly_svm", models_dir)
+    iforest_path, _ = save_model(iforest, "anomaly_iforest", models_dir)
+    # If using Keras, save as H5; for now, skip vae_path
+    return out_path, [svm_path, iforest_path]
 
 def run_3d_visualization(
     csv_path,
