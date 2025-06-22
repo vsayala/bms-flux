@@ -6,6 +6,7 @@ from tools import (
 
 mcp = FastMCP("anomaly_detection_mcp")
 
+
 @mcp.tool()
 def health_check() -> dict:
     """
@@ -13,7 +14,9 @@ def health_check() -> dict:
     Returns a simple status message and current working directory.
     """
     import os
+
     return {"status": "ok", "message": "MCP server is healthy", "cwd": os.getcwd()}
+
 
 @mcp.tool()
 def detect_anomalies(data_path: str, chunksize: int = 100000) -> dict:
@@ -27,15 +30,11 @@ def detect_anomalies(data_path: str, chunksize: int = 100000) -> dict:
             "status": "success",
             "message": f"Anomaly detection complete. Results saved to: {result_path}",
             "data": {"result_csv": result_path, "models": models},
-            "log_path": "logs/vae/"  # Adjust if needed
+            "log_path": "logs/vae/",  # Adjust if needed
         }
     except Exception as e:
-        return {
-            "status": "error",
-            "message": str(e),
-            "data": None,
-            "log_path": None
-        }
+        return {"status": "error", "message": str(e), "data": None, "log_path": None}
+
 
 @mcp.tool()
 def visualize_anomalies_3d(
@@ -44,7 +43,7 @@ def visualize_anomalies_3d(
     x_col: str = "CellVoltage",
     y_col: str = "InstantaneousCurrent",
     z_col: str = "CellTemperature",
-    out_path: str = "anomaly_3d_plot.png"
+    out_path: str = "anomaly_3d_plot.png",
 ) -> dict:
     """
     Generate and save a 3D scatter plot visualizing anomalies versus normal data.
@@ -52,26 +51,17 @@ def visualize_anomalies_3d(
     """
     try:
         img_path = run_3d_visualization(
-            result_csv,
-            anomalies_column,
-            x_col,
-            y_col,
-            z_col,
-            out_path
+            result_csv, anomalies_column, x_col, y_col, z_col, out_path
         )
         return {
             "status": "success",
             "message": f"3D anomaly visualization saved to: {img_path}",
             "data": {"plot": img_path},
-            "log_path": None
+            "log_path": None,
         }
     except Exception as e:
-        return {
-            "status": "error",
-            "message": str(e),
-            "data": None,
-            "log_path": None
-        }
+        return {"status": "error", "message": str(e), "data": None, "log_path": None}
+
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")

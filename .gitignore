@@ -22,6 +22,7 @@ data/output/
 
 # Models
 models/
+live_inference/
 
 # ... existing code ...
 bms_master.log

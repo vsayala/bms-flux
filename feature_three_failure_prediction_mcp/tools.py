@@ -13,6 +13,7 @@ from sklearn.metrics import classification_report
 import joblib
 from pathlib import Path
 
+
 def setup_run_folder():
     """
     Sets up a unique directory for the current run to store outputs and logs.
@@ -25,14 +26,21 @@ def setup_run_folder():
     plots_folder = os.path.join("runs", year, month, day, job_run_id)
     os.makedirs(plots_folder, exist_ok=True)
     log_path = os.path.join(plots_folder, "bms-ml-log.log")
-    logging.basicConfig(filename=log_path, level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s", filemode='a')
+    logging.basicConfig(
+        filename=log_path,
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s",
+        filemode="a",
+    )
     logging.info(f"Created folder structure for job run ID: {job_run_id}")
     return plots_folder, job_run_id
+
 
 def timing_decorator(func):
     """
     Decorator to time and log the execution of a function.
     """
+
     def wrapper(*args, **kwargs):
         start_time = time.time()
         logging.info(f"Started execution of '{func.__name__}'")
@@ -45,7 +53,9 @@ def timing_decorator(func):
             elapsed_time = time.time() - start_time
             logging.info(f"Completed '{func.__name__}' in {elapsed_time:.2f} seconds")
             return result
+
     return wrapper
+
 
 @timing_decorator
 def train_failure_model(data_path, target_column="Hybrid Anomalies"):
@@ -63,8 +73,10 @@ def train_failure_model(data_path, target_column="Hybrid Anomalies"):
 
     # --- FIX: Select only numeric features for training ---
     X_numeric = X.select_dtypes(include=np.number)
-    
-    X_train, X_test, y_train, y_test = train_test_split(X_numeric, y, test_size=0.2, random_state=42)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_numeric, y, test_size=0.2, random_state=42
+    )
 
     model = XGBClassifier(random_state=42)
     model.fit(X_train, y_train)
@@ -74,6 +86,7 @@ def train_failure_model(data_path, target_column="Hybrid Anomalies"):
     acc = accuracy_score(y_test, y_pred)
     logging.info(f"Failure Prediction Model Accuracy: {acc:.4f}")
     return model, acc, model_path
+
 
 @timing_decorator
 def predict_failing_cells(model, df):
@@ -97,6 +110,7 @@ def predict_failing_cells(model, df):
     logging.info(f"Cells predicted to fail: {failure_cells}")
     return failure_cells
 
+
 @timing_decorator
 def run_full_failure_prediction_pipeline(data_path):
     """
@@ -112,8 +126,9 @@ def run_full_failure_prediction_pipeline(data_path):
         "failing_cells": failing_cells,
         "job_run_id": job_run_id,
         "plots_folder": os.path.abspath(plots_folder),
-        "model_path": model_path
+        "model_path": model_path,
     }
+
 
 def run_failure_prediction(data_path: str, run_folder: Path) -> dict:
     """
@@ -122,38 +137,44 @@ def run_failure_prediction(data_path: str, run_folder: Path) -> dict:
     """
     failure_folder = run_folder / "failure_prediction"
     failure_folder.mkdir(exist_ok=True)
-    logging.info(f"Starting failure prediction. Outputs will be saved to: {failure_folder}")
+    logging.info(
+        f"Starting failure prediction. Outputs will be saved to: {failure_folder}"
+    )
 
     # This assumes the input data CSV now contains anomaly scores from the previous step
     df = pd.read_csv(data_path)
-    
-    # Create a dummy failure label for demonstration. 
-    # In a real scenario, this would be based on actual failure data.
-    if 'failure_label' not in df.columns:
-        df['failure_label'] = (df['autoencoder_anomaly'] == 1) | (df['iso_forest_anomaly'] == -1)
-        df['failure_label'] = df['failure_label'].astype(int)
 
-    features = [col for col in df.columns if 'anomaly' in col]
+    # Create a dummy failure label for demonstration.
+    # In a real scenario, this would be based on actual failure data.
+    if "failure_label" not in df.columns:
+        df["failure_label"] = (df["autoencoder_anomaly"] == 1) | (
+            df["iso_forest_anomaly"] == -1
+        )
+        df["failure_label"] = df["failure_label"].astype(int)
+
+    features = [col for col in df.columns if "anomaly" in col]
     if not features:
         logging.error("No anomaly score features found for failure prediction.")
         return {"error": "No anomaly scores found."}
-        
+
     X = df[features]
-    y = df['failure_label']
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
-    
+    y = df["failure_label"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.3, random_state=42, stratify=y
+    )
+
     model = RandomForestClassifier(random_state=42)
     model.fit(X_train, y_train)
-    
+
     model_path = failure_folder / "failure_prediction_model.gz"
     joblib.dump(model, model_path)
-    
+
     predictions = model.predict(X_test)
     report = classification_report(y_test, predictions, output_dict=True)
-    
+
     report_path = failure_folder / "classification_report.csv"
     pd.DataFrame(report).transpose().to_csv(report_path)
-    
+
     logging.info(f"Failure prediction training complete. Report saved to {report_path}")
     return {"failure_folder": str(failure_folder), "report_path": str(report_path)}

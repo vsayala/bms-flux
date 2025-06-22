@@ -6,6 +6,7 @@ import time
 
 app = FastAPI()
 
+
 @app.post("/run_eda/")
 def run_eda_endpoint(file: UploadFile = File(...)):
     """
@@ -21,7 +22,9 @@ def run_eda_endpoint(file: UploadFile = File(...)):
     result = run_eda(temp_path)
     # Log to master log
     with open("bms_master.log", "a") as f:
-        f.write(f"[API] {time.strftime('%Y-%m-%d %H:%M:%S')} EDA run for {file.filename} -> {result.get('run_folder')}\n")
+        f.write(
+            f"[API] {time.strftime('%Y-%m-%d %H:%M:%S')} EDA run for {file.filename} -> {result.get('run_folder')}\n"
+        )
     # Clean up temp file
     os.remove(temp_path)
-    return result 
+    return result

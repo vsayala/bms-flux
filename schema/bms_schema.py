@@ -1,6 +1,7 @@
 from dataclasses import dataclass, fields
 from typing import List
 
+
 @dataclass
 class BatteryRecord:
     CellVoltage: float
@@ -11,6 +12,7 @@ class BatteryRecord:
     CellID: str = None
     Timestamp: str = None
     IsDead: int = None
+
 
 def get_bms_columns() -> List[str]:
     return [f.name for f in fields(BatteryRecord)]

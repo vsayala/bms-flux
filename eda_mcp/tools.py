@@ -12,23 +12,26 @@ from sklearn.ensemble import RandomForestClassifier
 
 # Helper for master log
 MASTER_LOG = "bms_master.log"
+
+
 def master_log(msg):
     with open(MASTER_LOG, "a") as f:
         f.write(f"[EDA] {time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
+
 
 def run_eda(data_path: str, run_folder: Path) -> dict:
     # 1. Setup EDA-specific output folder and logger
     eda_folder = run_folder / "eda"
     eda_folder.mkdir(exist_ok=True)
-    
+
     log_path = eda_folder / "eda.log"
     logging.basicConfig(filename=log_path, level=logging.INFO, force=True)
-    
+
     logging.info(f"Starting EDA. Outputs will be saved to: {eda_folder}")
     master_log(f"Starting EDA. Outputs will be saved to: {eda_folder}")
-    
+
     outputs = []
-    
+
     try:
         df = pd.read_csv(data_path)
         # Save a copy of the data used for EDA in the run folder for the dashboard
@@ -51,13 +54,20 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
             master_log("Saved per-cell summary stats.")
             # Cell balancing: voltage spread over time
             if "Voltage (V)" in df.columns and "Timestamp" in df.columns:
-                pivot = df.pivot(index="Timestamp", columns="Cell ID", values="Voltage (V)")
+                pivot = df.pivot(
+                    index="Timestamp", columns="Cell ID", values="Voltage (V)"
+                )
                 plt.figure(figsize=(12, 6))
                 plt.plot(pivot, alpha=0.7)
                 plt.title("Cell Voltage Over Time (Balancing)")
                 plt.xlabel("Timestamp")
                 plt.ylabel("Voltage (V)")
-                plt.legend(pivot.columns, title="Cell ID", bbox_to_anchor=(1.05, 1), loc='upper left')
+                plt.legend(
+                    pivot.columns,
+                    title="Cell ID",
+                    bbox_to_anchor=(1.05, 1),
+                    loc="upper left",
+                )
                 plt.tight_layout()
                 cell_bal_path = eda_folder / "cell_balancing_over_time.png"
                 plt.savefig(cell_bal_path)
@@ -107,7 +117,11 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
             logging.info("Saved failure/anomaly rate by cell.")
             master_log("Saved failure/anomaly rate by cell.")
             # Feature importance for failure
-            X = df.select_dtypes(include=[np.number]).drop(columns=[label_col], errors="ignore").fillna(0)
+            X = (
+                df.select_dtypes(include=[np.number])
+                .drop(columns=[label_col], errors="ignore")
+                .fillna(0)
+            )
             y = df[label_col]
             rf = RandomForestClassifier(n_estimators=100, random_state=42)
             rf.fit(X, y)
@@ -132,7 +146,9 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
     # --- 3. Categorical/Binary/Continuous Feature Handling ---
     try:
         for col in df.columns:
-            if df[col].dtype == bool or (df[col].nunique() <= 5 and df[col].dtype in [np.int64, np.float64]):
+            if df[col].dtype == bool or (
+                df[col].nunique() <= 5 and df[col].dtype in [np.int64, np.float64]
+            ):
                 plt.figure(figsize=(6, 4))
                 df[col].value_counts().plot(kind="bar")
                 plt.title(f"Bar Plot of {col}")
@@ -162,7 +178,9 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
     try:
         if "Cell ID" in df.columns and "Voltage (V)" in df.columns:
             cell_groups = df.groupby("Cell ID")
-            outlier_stats = cell_groups["Voltage (V)"].agg(["mean", "std", "min", "max"])
+            outlier_stats = cell_groups["Voltage (V)"].agg(
+                ["mean", "std", "min", "max"]
+            )
             outlier_stats_path = eda_folder / "cell_voltage_stats.csv"
             outlier_stats.to_csv(outlier_stats_path)
             outputs.append(str(outlier_stats_path))
@@ -183,7 +201,12 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
                 plt.title(f"{drift_col} Drift Over Time by Cell")
                 plt.xlabel("Timestamp")
                 plt.ylabel(drift_col)
-                plt.legend(pivot.columns, title="Cell ID", bbox_to_anchor=(1.05, 1), loc='upper left')
+                plt.legend(
+                    pivot.columns,
+                    title="Cell ID",
+                    bbox_to_anchor=(1.05, 1),
+                    loc="upper left",
+                )
                 plt.tight_layout()
                 drift_path = eda_folder / f"{drift_col}_drift_over_time.png"
                 plt.savefig(drift_path)
@@ -197,19 +220,26 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
                 drift_stats.to_csv(drift_stats_path)
                 outputs.append(str(drift_stats_path))
         # 2. Voltage/Temperature Excursions
-        for exc_col, normal_range in [("Voltage (V)", (2.5, 4.2)), ("Temperature (C)", (10, 60))]:
+        for exc_col, normal_range in [
+            ("Voltage (V)", (2.5, 4.2)),
+            ("Temperature (C)", (10, 60)),
+        ]:
             if exc_col in df.columns and "Cell ID" in df.columns:
-                excursions = df[(df[exc_col] < normal_range[0]) | (df[exc_col] > normal_range[1])]
+                excursions = df[
+                    (df[exc_col] < normal_range[0]) | (df[exc_col] > normal_range[1])
+                ]
                 exc_path = eda_folder / f"{exc_col}_excursions.csv"
                 excursions.to_csv(exc_path, index=False)
                 outputs.append(str(exc_path))
                 plt.figure(figsize=(10, 4))
                 for cell, group in excursions.groupby("Cell ID"):
-                    plt.scatter(group["Timestamp"], group[exc_col], label=f"Cell {cell}", s=10)
+                    plt.scatter(
+                        group["Timestamp"], group[exc_col], label=f"Cell {cell}", s=10
+                    )
                 plt.title(f"{exc_col} Excursions by Cell")
                 plt.xlabel("Timestamp")
                 plt.ylabel(exc_col)
-                plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+                plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
                 plt.tight_layout()
                 exc_plot = eda_folder / f"{exc_col}_excursions.png"
                 plt.savefig(exc_plot)
@@ -218,7 +248,9 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
                 logging.info(f"Saved {exc_col} excursions plot and CSV.")
                 master_log(f"Saved {exc_col} excursions plot and CSV.")
         # 3. Cycle Life/Degradation Analysis
-        for cyc_col in [c for c in df.columns if c.lower() in ["cycle", "age", "cycle_count"]]:
+        for cyc_col in [
+            c for c in df.columns if c.lower() in ["cycle", "age", "cycle_count"]
+        ]:
             if "Capacity (Ah)" in df.columns:
                 plt.figure(figsize=(8, 4))
                 plt.scatter(df[cyc_col], df["Capacity (Ah)"], alpha=0.5)
@@ -246,7 +278,9 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
                 logging.info(f"Saved resistance growth plot for {cyc_col}.")
                 master_log(f"Saved resistance growth plot for {cyc_col}.")
         # 4. Alarm/Event Analysis
-        for alarm_col in [c for c in df.columns if "alarm" in c.lower() or "event" in c.lower()]:
+        for alarm_col in [
+            c for c in df.columns if "alarm" in c.lower() or "event" in c.lower()
+        ]:
             plt.figure(figsize=(8, 4))
             df[alarm_col].value_counts().plot(kind="bar")
             plt.title(f"{alarm_col} Frequency")
@@ -263,7 +297,7 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
 
     # --- 6. Generate HTML/PDF report as before (reuse previous code) ---
     try:
-        template_str = '''
+        template_str = """
         <html>
         <head><title>EDA Report - {{ job_run_id }}</title></head>
         <body>
@@ -285,12 +319,14 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
         {% endfor %}
         </body>
         </html>
-        '''
+        """
+
         def read_csv_txt(path):
             try:
                 return open(path).read()
             except FileNotFoundError:
                 return "(not found)"
+
         per_cell_stats = read_csv_txt(eda_folder / "per_cell_summary.csv")
         fail_rate = read_csv_txt(eda_folder / "failure_rate_by_cell.csv")
         outlier_stats = read_csv_txt(eda_folder / "cell_voltage_stats.csv")
@@ -307,7 +343,7 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
             fail_rate=fail_rate,
             outlier_stats=outlier_stats,
             plot_files=plot_files,
-            html_files=html_files
+            html_files=html_files,
         )
         html_path = eda_folder / "eda_report.html"
         with open(html_path, "w") as f:
@@ -328,8 +364,8 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
     with open(eda_folder / "eda_outputs.txt", "w") as f:
         for out in outputs:
             f.write(f"{out}\n")
-            
+
     logging.info(f"EDA complete. {len(outputs)} outputs generated.")
     master_log(f"EDA complete. {len(outputs)} outputs generated in {eda_folder}")
-    
-    return {"eda_folder": str(eda_folder), "outputs": outputs} 
+
+    return {"eda_folder": str(eda_folder), "outputs": outputs}
