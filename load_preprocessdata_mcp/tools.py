@@ -4,6 +4,12 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import RobustScaler
 import os
 import time
+from pydantic import ValidationError
+import logging
+
+from schema.bms_schema import BMSSchema
+
+logger = logging.getLogger(__name__)
 
 
 def setup_run_folder():
@@ -13,6 +19,25 @@ def setup_run_folder():
     run_folder = os.path.join("runs", year, month, day, f"run_{current_datetime}")
     os.makedirs(run_folder, exist_ok=True)
     return run_folder
+
+
+def validate_data(df: pd.DataFrame, num_rows_to_check: int = 100):
+    """
+    Validates the first N rows of a DataFrame against the BMSSchema.
+    Raises a ValueError if validation fails.
+    """
+    logger.info(f"Validating the first {num_rows_to_check} rows of the dataset...")
+    sample_records = df.head(num_rows_to_check).to_dict(orient="records")
+
+    for i, record in enumerate(sample_records):
+        try:
+            BMSSchema(**record)
+        except ValidationError as e:
+            error_msg = f"Data validation failed on row {i+2}: {e}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+    logger.info("Data validation successful.")
 
 
 def preprocess_battery_data(data_path: str) -> str:

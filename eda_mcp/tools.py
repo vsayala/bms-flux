@@ -4,14 +4,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
-import jinja2
 import pdfkit
-import base64
 from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
+from datetime import datetime
 
 # Helper for master log
 MASTER_LOG = "bms_master.log"
+
+logger = logging.getLogger(__name__)
 
 
 def master_log(msg):
@@ -19,7 +20,12 @@ def master_log(msg):
         f.write(f"[EDA] {time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
 
 
-def run_eda(data_path: str, run_folder: Path) -> dict:
+def run_eda(
+    data_path: str,
+    run_folder: Path,
+    voltage_threshold: float = 4.2,
+    temperature_threshold: float = 60.0,
+) -> dict:
     # 1. Setup EDA-specific output folder and logger
     eda_folder = run_folder / "eda"
     eda_folder.mkdir(exist_ok=True)
@@ -220,33 +226,31 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
                 drift_stats.to_csv(drift_stats_path)
                 outputs.append(str(drift_stats_path))
         # 2. Voltage/Temperature Excursions
-        for exc_col, normal_range in [
-            ("Voltage (V)", (2.5, 4.2)),
-            ("Temperature (C)", (10, 60)),
+        for col, threshold in [
+            ("Voltage (V)", voltage_threshold),
+            ("Temperature (C)", temperature_threshold),
         ]:
-            if exc_col in df.columns and "Cell ID" in df.columns:
-                excursions = df[
-                    (df[exc_col] < normal_range[0]) | (df[exc_col] > normal_range[1])
-                ]
-                exc_path = eda_folder / f"{exc_col}_excursions.csv"
-                excursions.to_csv(exc_path, index=False)
-                outputs.append(str(exc_path))
+            excursions = df[df[col] > threshold]
+            if not excursions.empty:
+                excursion_csv_path = eda_folder / f"{col}_excursions.csv"
+                excursions.to_csv(excursion_csv_path, index=False)
+                outputs.append(str(excursion_csv_path))
                 plt.figure(figsize=(10, 4))
                 for cell, group in excursions.groupby("Cell ID"):
                     plt.scatter(
-                        group["Timestamp"], group[exc_col], label=f"Cell {cell}", s=10
+                        group["Timestamp"], group[col], label=f"Cell {cell}", s=10
                     )
-                plt.title(f"{exc_col} Excursions by Cell")
+                plt.title(f"{col} Excursions by Cell")
                 plt.xlabel("Timestamp")
-                plt.ylabel(exc_col)
+                plt.ylabel(col)
                 plt.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
                 plt.tight_layout()
-                exc_plot = eda_folder / f"{exc_col}_excursions.png"
+                exc_plot = eda_folder / f"{col}_excursions.png"
                 plt.savefig(exc_plot)
                 plt.close()
                 outputs.append(str(exc_plot))
-                logging.info(f"Saved {exc_col} excursions plot and CSV.")
-                master_log(f"Saved {exc_col} excursions plot and CSV.")
+                logging.info(f"Saved {col} excursions plot and CSV.")
+                master_log(f"Saved {col} excursions plot and CSV.")
         # 3. Cycle Life/Degradation Analysis
         for cyc_col in [
             c for c in df.columns if c.lower() in ["cycle", "age", "cycle_count"]
@@ -295,70 +299,71 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
         logging.warning(f"Domain diagnostics failed: {e}")
         master_log(f"Domain diagnostics failed: {e}")
 
-    # --- 6. Generate HTML/PDF report as before (reuse previous code) ---
+    # 7. Generate Text Summary Report
+    logger.info("Generating EDA summary report...")
+    summary_report_path = eda_folder / "eda_summary_report.txt"
+    summary_content = f"""
+EDA Summary Report for Run: {run_folder.name}
+=======================================
+Data Source: {data_path}
+Time of Execution: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+Key Findings:
+-------------
+- Data shape: {df.shape[0]} rows, {df.shape[1]} columns
+- Time range: {df['Timestamp'].min()} to {df['Timestamp'].max()}
+- Number of unique cells: {df['Cell ID'].nunique()}
+
+Excursions:
+- Voltage readings over {voltage_threshold}V were found. See Voltage (V)_excursions.csv/png.
+- Temperature readings over {temperature_threshold}°C were found. See Temperature (C)_excursions.csv/png.
+
+Notes:
+- Per-cell descriptive statistics saved to per_cell_statistics.csv.
+- Per-cell data drift analysis saved to drift_analysis folder.
+"""
+    summary_report_path.write_text(summary_content.strip())
+    outputs.append(str(summary_report_path))
+    logger.info(f"EDA summary report saved to {summary_report_path}")
+
+    # 8. Generate PDF report (optional, if `wkhtmltopdf` is installed)
     try:
-        template_str = """
+        pdf_report_path = eda_folder / "eda_summary_report.pdf"
+
+        # Generate HTML first
+        html_content = f"""
         <html>
-        <head><title>EDA Report - {{ job_run_id }}</title></head>
-        <body>
-        <h1>EDA Report</h1>
-        <h2>Run ID: {{ job_run_id }}</h2>
-        <h3>Per-Cell Summary</h3>
-        <pre>{{ per_cell_stats }}</pre>
-        <h3>Failure/Anomaly Rate by Cell</h3>
-        <pre>{{ fail_rate }}</pre>
-        <h3>Cell Voltage Stats</h3>
-        <pre>{{ outlier_stats }}</pre>
-        <h3>Plots</h3>
-        {% for plot in plot_files %}
-            <div><img src="data:image/png;base64,{{ plot }}" style="max-width:700px;"></div>
-        {% endfor %}
-        <h3>Interactive Plots</h3>
-        {% for html in html_files %}
-            <iframe src="{{ html }}" width="700" height="500"></iframe>
-        {% endfor %}
-        </body>
+            <head><title>EDA Report</title></head>
+            <body>
+                <h1>EDA Summary Report: {run_folder.name}</h1>
+                <p><b>Data Source:</b> {data_path}</p>
+                <p><b>Execution Time:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                <hr>
+                <h2>Key Findings</h2>
+                <ul>
+                    <li>Data shape: {df.shape[0]} rows, {df.shape[1]} columns</li>
+                    <li>Time range: {df['Timestamp'].min()} to {df['Timestamp'].max()}</li>
+                    <li>Number of unique cells: {df['Cell ID'].nunique()}</li>
+                </ul>
+                <hr>
+                <h2>Visualizations</h2>
+            </body>
         </html>
         """
+        html_path = eda_folder / "temp_report.html"
+        html_path.write_text(html_content)
 
-        def read_csv_txt(path):
-            try:
-                return open(path).read()
-            except FileNotFoundError:
-                return "(not found)"
-
-        per_cell_stats = read_csv_txt(eda_folder / "per_cell_summary.csv")
-        fail_rate = read_csv_txt(eda_folder / "failure_rate_by_cell.csv")
-        outlier_stats = read_csv_txt(eda_folder / "cell_voltage_stats.csv")
-        plot_files = []
-        for f in eda_folder.iterdir():
-            if f.suffix == ".png":
-                with open(f, "rb") as imgf:
-                    plot_files.append(base64.b64encode(imgf.read()).decode())
-        html_files = [f.name for f in eda_folder.iterdir() if f.suffix == ".html"]
-        template = jinja2.Template(template_str)
-        html_report = template.render(
-            job_run_id=run_folder.name,
-            per_cell_stats=per_cell_stats,
-            fail_rate=fail_rate,
-            outlier_stats=outlier_stats,
-            plot_files=plot_files,
-            html_files=html_files,
+        pdfkit.from_file(str(html_path), str(pdf_report_path))
+        outputs.append(str(pdf_report_path))
+        logger.info(f"PDF report successfully generated at {pdf_report_path}")
+        html_path.unlink()  # Clean up temporary HTML file
+    except OSError:
+        logger.warning(
+            "PDF report generation failed: wkhtmltopdf not installed or not in PATH"
         )
-        html_path = eda_folder / "eda_report.html"
-        with open(html_path, "w") as f:
-            f.write(html_report)
-        outputs.append(str(html_path))
-        pdf_path = eda_folder / "eda_report.pdf"
-        try:
-            pdfkit.from_file(html_path, pdf_path)
-            outputs.append(str(pdf_path))
-        except Exception as e:
-            logging.warning(f"PDF report generation failed: {e}")
-            master_log(f"PDF report generation failed: {e}")
-    except Exception as e:
-        logging.warning(f"HTML report generation failed: {e}")
-        master_log(f"HTML report generation failed: {e}")
+        master_log(
+            "PDF report generation failed: wkhtmltopdf not installed or not in PATH"
+        )
 
     # --- 7. Save a log of all outputs ---
     with open(eda_folder / "eda_outputs.txt", "w") as f:

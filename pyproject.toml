@@ -34,6 +34,7 @@ dependencies = [
     "pdfkit",
     "streamlit",
     "streamlit-autorefresh",
+    "PyYAML",
 ]
 
 [tool.setuptools.packages.find]
@@ -51,7 +52,9 @@ dev = [
     "pytest>=7.0.0",
     "mypy>=1.0.0",
     "ruff>=0.1.0",
-    "black>=24.0.0"
+    "black>=24.0.0",
+    "pre-commit",
+    "types-PyYAML"
 ]
 
 [build-system]

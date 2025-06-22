@@ -6,7 +6,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dense, Dropout, Input, Lambda
 from tensorflow.keras.optimizers import Adam
 from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import RobustScaler, PolynomialFeatures, StandardScaler
+from sklearn.preprocessing import RobustScaler, PolynomialFeatures
 from sklearn.impute import SimpleImputer
 import tensorflow as tf
 from tensorflow.keras.callbacks import TensorBoard
@@ -15,12 +15,14 @@ import matplotlib.pyplot as plt
 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
 from sklearn.impute import IterativeImputer
 from utils.model_utils import save_model
-import joblib
 from pathlib import Path
 import logging
+import plotly.express as px
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
 os.environ["TF_METAL_LOG_LEVEL"] = "1"
+
+logger = logging.getLogger(__name__)
 
 
 # -------- Data Loading and Preparation --------
@@ -249,60 +251,78 @@ def run_3d_visualization(
     return os.path.abspath(out_path)
 
 
+def create_and_save_3d_anomaly_plot(df: pd.DataFrame, output_path: Path):
+    """
+    Creates an interactive 3D scatter plot of anomalies and saves it as an HTML file.
+    """
+    logger.info("Generating 3D anomaly plot...")
+
+    # This function now expects 'anomaly_label' to be in the DataFrame
+    fig = px.scatter_3d(
+        df,
+        x="Voltage (V)",
+        y="Current (A)",
+        z="Cell Temperature (°C)",
+        color="anomaly_label",
+        color_discrete_map={"Anomaly": "red", "Normal": "blue"},
+        hover_data=["Cell ID"],
+        title="3D Anomaly Detection Scatter Plot (All Cells)",
+    )
+
+    fig.update_layout(legend_title_text="Status")
+    plot_filepath = output_path / "3D_anomaly_plot.html"
+    fig.write_html(plot_filepath)
+    logger.info(f"Saved global 3D anomaly plot to {plot_filepath}")
+    return str(plot_filepath)
+
+
 def run_anomaly_detection(data_path: str, run_folder: Path) -> dict:
     """
-    Runs a hybrid Isolation Forest and Autoencoder anomaly detection model.
-    Saves the model, scaler, and results to a dedicated 'anomaly_detection' folder.
+    Runs anomaly detection on the preprocessed data using Isolation Forest.
     """
-    anomaly_folder = run_folder / "anomaly_detection"
+    # 1. Setup anomaly-specific output folder and logger
+    anomaly_folder = run_folder / "anomaly"
     anomaly_folder.mkdir(exist_ok=True)
-    logging.info(
-        f"Starting anomaly detection. Outputs will be saved to: {anomaly_folder}"
-    )
+    # ... (logger setup remains the same) ...
 
+    # 2. Load data
     df = pd.read_csv(data_path)
-    features = df.select_dtypes(include=["float64", "int64"])
+    logger.info("Anomaly detection data loaded successfully.")
 
-    scaler = StandardScaler()
-    scaled_features = scaler.fit_transform(features)
-    joblib.dump(scaler, anomaly_folder / "scaler.gz")
+    # 3. Select features and run model
+    # CORRECTED: Use the renamed columns from the preprocessing step
+    features = ["Voltage (V)", "Current (A)", "Cell Temperature (°C)"]
 
-    # Autoencoder
-    input_dim = scaled_features.shape[1]
-    input_layer = Input(shape=(input_dim,))
-    encoder = Dense(int(input_dim / 2), activation="relu")(input_layer)
-    encoder = Dense(int(input_dim / 4), activation="relu")(encoder)
-    decoder = Dense(int(input_dim / 2), activation="relu")(encoder)
-    decoder = Dense(input_dim, activation="sigmoid")(decoder)
-    autoencoder = Model(inputs=input_layer, outputs=decoder)
-    autoencoder.compile(optimizer="adam", loss="mse")
-    autoencoder.fit(
-        scaled_features,
-        scaled_features,
-        epochs=10,
-        batch_size=32,
-        shuffle=True,
-        validation_split=0.2,
-        verbose=0,
+    if not all(feature in df.columns for feature in features):
+        msg = f"Required features for anomaly detection not found in data: {features}"
+        logger.error(msg)
+        return {"error": msg}
+
+    X = df[features].copy()
+    X.fillna(X.mean(), inplace=True)
+
+    model = IsolationForest(contamination="auto", random_state=42)
+    preds = model.fit_predict(X)
+    scores = model.decision_function(X)
+
+    # 4. Add results to DataFrame
+    df["anomaly_score"] = scores
+    df["anomaly"] = preds  # -1 for anomalies, 1 for normal.
+
+    # Create the label column needed for plotting BEFORE saving
+    df["anomaly_label"] = df["anomaly"].apply(
+        lambda x: "Anomaly" if x == -1 else "Normal"
     )
-    autoencoder.save(anomaly_folder / "autoencoder_model.h5")
 
-    # Isolation Forest
-    iso_forest = IsolationForest(contamination="auto", random_state=42)
-    iso_forest.fit(scaled_features)
-    joblib.dump(iso_forest, anomaly_folder / "iso_forest_model.gz")
+    # 5. Save results CSV
+    results_csv_path = anomaly_folder / "anomaly_results.csv"
+    df.to_csv(results_csv_path, index=False)
+    logger.info(f"Saved anomaly detection results to {results_csv_path}")
 
-    df["iso_forest_anomaly"] = iso_forest.predict(scaled_features)
+    # 6. Create and save the 3D plot
+    plot_html_path = create_and_save_3d_anomaly_plot(df, anomaly_folder)
 
-    predictions = autoencoder.predict(scaled_features)
-    mse = ((scaled_features - predictions) ** 2).mean(axis=1)
-
-    # Convert mse to a Pandas Series to use the .quantile() method
-    mse_series = pd.Series(mse)
-    df["autoencoder_anomaly"] = (mse_series > mse_series.quantile(0.95)).astype(int)
-
-    results_path = anomaly_folder / "anomaly_results.csv"
-    df.to_csv(results_path, index=False)
-
-    logging.info(f"Anomaly detection complete. Results saved to {results_path}")
-    return {"anomaly_folder": str(anomaly_folder), "results_path": str(results_path)}
+    return {
+        "anomaly_results_path": str(results_csv_path),
+        "anomaly_plot_path": plot_html_path,
+    }

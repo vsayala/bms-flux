@@ -144,21 +144,32 @@ def run_failure_prediction(data_path: str, run_folder: Path) -> dict:
     # This assumes the input data CSV now contains anomaly scores from the previous step
     df = pd.read_csv(data_path)
 
-    # Create a dummy failure label for demonstration.
-    # In a real scenario, this would be based on actual failure data.
-    if "failure_label" not in df.columns:
-        df["failure_label"] = (df["autoencoder_anomaly"] == 1) | (
-            df["iso_forest_anomaly"] == -1
-        )
-        df["failure_label"] = df["failure_label"].astype(int)
+    # Define failure label based on anomaly detection results and other critical factors
+    # CORRECTED: Use the 'anomaly' column from the new anomaly detection script
+    df["failure_label"] = (
+        (df["anomaly"] == -1) | (df["Cell Temperature (°C)"] > 75)
+    ).astype(int)
 
-    features = [col for col in df.columns if "anomaly" in col]
-    if not features:
-        logging.error("No anomaly score features found for failure prediction.")
-        return {"error": "No anomaly scores found."}
+    features = [
+        "Voltage (V)",
+        "Current (A)",
+        "Cell Temperature (°C)",
+        "SOC (%)",
+        "anomaly_score",
+    ]
+
+    # Check for feature existence
+    missing_features = [f for f in features if f not in df.columns]
+    if missing_features:
+        msg = f"Failure prediction missing required features: {missing_features}"
+        logging.error(msg)
+        return {"error": msg}
 
     X = df[features]
     y = df["failure_label"]
+
+    if X.empty or y.empty:
+        raise ValueError("Empty DataFrame after feature selection")
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.3, random_state=42, stratify=y

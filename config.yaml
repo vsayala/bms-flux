@@ -1,7 +1,29 @@
+# Configuration for the BMS-Flux Pipeline
+# This file centralizes all parameters for the project, making it easier to manage and modify.
+
+data:
+  # Path to the raw input data file.
+  raw_path: "data/input/battery_data.csv"
+
+pipeline_params:
+  # Parameters for the time series forecasting module.
+  timeseries:
+    cell_id_to_predict: "1"
+    prediction_steps: 100
+
+  # Parameters for the Exploratory Data Analysis (EDA) module.
+  eda:
+    voltage_threshold: 4.2
+    temperature_threshold: 60
+
+dashboard:
+  # Port on which the Streamlit dashboard will be launched.
+  port: 8501
+
 preprocessing:
   impute_strategy: mean
   scale_features: true
 anomaly_detection:
   contamination: 0.05
   svm_nu: 0.05
-  iforest_estimators: 500 
+  iforest_estimators: 500

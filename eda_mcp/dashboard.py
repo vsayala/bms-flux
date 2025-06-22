@@ -148,6 +148,61 @@ with tab1:
             if exc_img.exists():
                 st.image(str(exc_img))
 
+    # --- Anomaly Detection Section ---
+    st.header("Anomaly Detection Analysis")
+    anomaly_csv_path = st.session_state.selected_run / "anomaly" / "anomaly_results.csv"
+    anomaly_plot_path = (
+        st.session_state.selected_run / "anomaly" / "3D_anomaly_plot.html"
+    )
+
+    if anomaly_csv_path.exists():
+        st.subheader("Interactive 3D Anomaly Plot")
+        anomaly_df = pd.read_csv(anomaly_csv_path)
+
+        # Dropdown to select Cell ID (in a narrower column)
+        cell_ids = sorted(anomaly_df["Cell ID"].unique().tolist())
+        if not cell_ids:
+            st.warning("No Cell IDs found in the anomaly data.")
+        else:
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                selected_cell_id = st.selectbox(
+                    "Select a Cell ID:",
+                    cell_ids,
+                    key="anomaly_cell_id_selector",
+                )
+
+            # Filter data for the plot based on selection
+            plot_df = anomaly_df[anomaly_df["Cell ID"] == selected_cell_id]
+            title = f"3D Anomaly Plot for Cell ID: {selected_cell_id}"
+
+            # Create the 3D scatter plot
+            fig = px.scatter_3d(
+                plot_df,
+                x="Voltage (V)",
+                y="Current (A)",
+                z="Cell Temperature (°C)",
+                color="anomaly_label",
+                color_discrete_map={"Anomaly": "red", "Normal": "blue"},
+                title=title,
+                labels={
+                    "Voltage (V)": "Voltage (V)",
+                    "Current (A)": "Current (A)",
+                    "Cell Temperature (°C)": "Cell Temperature (°C)",
+                },
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Show the CORRECTLY filtered raw data
+            if st.checkbox("Show Raw Anomaly Data for selected cell"):
+                st.dataframe(plot_df)
+    else:
+        st.info("Anomaly detection results not found for this run.")
+
+    # --- Time Series Forecast Section ---
+    st.header("Time Series Forecast Analysis")
+    timeseries_folder = st.session_state.selected_run / "timeseries"
+
 with tab2:
     st.subheader("Interactive Feature Exploration")
 

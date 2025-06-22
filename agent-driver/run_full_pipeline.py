@@ -1,12 +1,12 @@
 import sys
 import os
-import shutil
 import logging
 import time
 import pandas as pd
 import subprocess
 import uuid
 from pathlib import Path
+import yaml
 
 # Ensure the project root is on the python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -78,8 +78,13 @@ def main():
     """
     logger.info("--- Starting Full BMS-Flux Pipeline ---")
 
-    # Define data paths
-    raw_data_path = "data/input/battery_data.csv"
+    # Load configuration from YAML file
+    with open("config.yaml", "r") as f:
+        config = yaml.safe_load(f)
+        logger.info("Configuration file loaded successfully.")
+
+    # Define data paths from config
+    raw_data_path = config["data"]["raw_path"]
 
     # Ensure output directory exists
     os.makedirs("data/output", exist_ok=True)
@@ -91,7 +96,7 @@ def main():
     # 2. Preprocessing
     logger.info("[Step 1/5] Running Preprocessing...")
     t0 = time.time()
-    preprocessed_path = preprocess_battery_data("data/input/battery_data.csv")
+    preprocessed_path = preprocess_battery_data(raw_data_path)
     logger.info(
         f"Preprocessing complete. Output: {preprocessed_path} (Elapsed: {time.time()-t0:.2f}s)"
     )
@@ -99,7 +104,13 @@ def main():
     # 3. EDA
     logger.info("[Step 2/5] Running EDA...")
     t0 = time.time()
-    eda_result = run_eda(preprocessed_path, run_folder)
+    eda_params = config["pipeline_params"]["eda"]
+    eda_result = run_eda(
+        data_path=preprocessed_path,
+        run_folder=run_folder,
+        voltage_threshold=eda_params["voltage_threshold"],
+        temperature_threshold=eda_params["temperature_threshold"],
+    )
     logger.info(
         f"EDA complete. Outputs at: {eda_result.get('eda_folder')} (Elapsed: {time.time()-t0:.2f}s)"
     )
@@ -108,18 +119,20 @@ def main():
     logger.info("[Step 3/5] Running Anomaly Detection...")
     t0 = time.time()
     anomaly_result = run_anomaly_detection(preprocessed_path, run_folder)
-    anomaly_results_path = anomaly_result.get(
-        "results_path"
-    )  # Get the path to the results CSV
+    anomaly_results_path = anomaly_result.get("anomaly_results_path")
     logger.info(
-        f"Anomaly Detection complete. Outputs at: {anomaly_result.get('anomaly_folder')} (Elapsed: {time.time()-t0:.2f}s)"
+        f"Anomaly Detection complete. Results at: {anomaly_results_path} (Elapsed: {time.time()-t0:.2f}s)"
     )
 
     # 5. Time Series Forecasting
     logger.info("[Step 4/5] Running Time Series Forecasting...")
     t0 = time.time()
+    ts_params = config["pipeline_params"]["timeseries"]
     timeseries_result = predict_cell_timeseries(
-        anomaly_results_path, "1", 100, run_folder
+        data_path=anomaly_results_path,
+        cell_id=ts_params["cell_id_to_predict"],
+        steps=ts_params["prediction_steps"],
+        run_folder=run_folder,
     )  # Use anomaly results
     logger.info(
         f"Time Series Forecasting complete. Outputs at: {timeseries_result.get('timeseries_folder')} (Elapsed: {time.time()-t0:.2f}s)"
@@ -128,7 +141,6 @@ def main():
     # 6. Failure Prediction
     logger.info("[Step 5/5] Running Failure Prediction...")
     t0 = time.time()
-    # Ensure failure prediction uses the output from anomaly detection
     failure_result = run_failure_prediction(anomaly_results_path, run_folder)
     logger.info(
         f"Failure Prediction complete. Outputs at: {failure_result.get('failure_folder')} (Elapsed: {time.time()-t0:.2f}s)"
@@ -151,7 +163,7 @@ def main():
 
     # Launch dashboard unless --no-dashboard flag is passed
     if "--no-dashboard" not in sys.argv:
-        DASHBOARD_PORT = 8501
+        DASHBOARD_PORT = config["dashboard"]["port"]
         logger.info(f"Attempting to launch dashboard on port {DASHBOARD_PORT}...")
         kill_process_on_port(DASHBOARD_PORT)
         try:
