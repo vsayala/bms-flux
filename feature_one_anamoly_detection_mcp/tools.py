@@ -6,7 +6,7 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dense, Dropout, Input, Lambda
 from tensorflow.keras.optimizers import Adam
 from sklearn.ensemble import IsolationForest
-from sklearn.preprocessing import RobustScaler, PolynomialFeatures
+from sklearn.preprocessing import RobustScaler, PolynomialFeatures, StandardScaler
 from sklearn.impute import SimpleImputer
 import tensorflow as tf
 from tensorflow.keras.callbacks import TensorBoard
@@ -15,6 +15,9 @@ import matplotlib.pyplot as plt
 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
 from sklearn.impute import IterativeImputer
 from utils.model_utils import save_model
+import joblib
+from pathlib import Path
+import logging
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
 os.environ["TF_METAL_LOG_LEVEL"] = "1"
@@ -186,3 +189,51 @@ def run_3d_visualization(
     plt.savefig(out_path)
     plt.close(fig)
     return os.path.abspath(out_path)
+
+def run_anomaly_detection(data_path: str, run_folder: Path) -> dict:
+    """
+    Runs a hybrid Isolation Forest and Autoencoder anomaly detection model.
+    Saves the model, scaler, and results to a dedicated 'anomaly_detection' folder.
+    """
+    anomaly_folder = run_folder / "anomaly_detection"
+    anomaly_folder.mkdir(exist_ok=True)
+    logging.info(f"Starting anomaly detection. Outputs will be saved to: {anomaly_folder}")
+
+    df = pd.read_csv(data_path)
+    features = df.select_dtypes(include=['float64', 'int64'])
+    
+    scaler = StandardScaler()
+    scaled_features = scaler.fit_transform(features)
+    joblib.dump(scaler, anomaly_folder / "scaler.gz")
+
+    # Autoencoder
+    input_dim = scaled_features.shape[1]
+    input_layer = Input(shape=(input_dim,))
+    encoder = Dense(int(input_dim / 2), activation="relu")(input_layer)
+    encoder = Dense(int(input_dim / 4), activation="relu")(encoder)
+    decoder = Dense(int(input_dim / 2), activation="relu")(encoder)
+    decoder = Dense(input_dim, activation="sigmoid")(decoder)
+    autoencoder = Model(inputs=input_layer, outputs=decoder)
+    autoencoder.compile(optimizer='adam', loss='mse')
+    autoencoder.fit(scaled_features, scaled_features, epochs=10, batch_size=32, shuffle=True, validation_split=0.2, verbose=0)
+    autoencoder.save(anomaly_folder / "autoencoder_model.h5")
+
+    # Isolation Forest
+    iso_forest = IsolationForest(contamination='auto', random_state=42)
+    iso_forest.fit(scaled_features)
+    joblib.dump(iso_forest, anomaly_folder / "iso_forest_model.gz")
+    
+    df['iso_forest_anomaly'] = iso_forest.predict(scaled_features)
+    
+    predictions = autoencoder.predict(scaled_features)
+    mse = ((scaled_features - predictions) ** 2).mean(axis=1)
+    
+    # Convert mse to a Pandas Series to use the .quantile() method
+    mse_series = pd.Series(mse)
+    df['autoencoder_anomaly'] = (mse_series > mse_series.quantile(0.95)).astype(int)
+    
+    results_path = anomaly_folder / "anomaly_results.csv"
+    df.to_csv(results_path, index=False)
+    
+    logging.info(f"Anomaly detection complete. Results saved to {results_path}")
+    return {"anomaly_folder": str(anomaly_folder), "results_path": str(results_path)}

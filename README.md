@@ -14,6 +14,7 @@ A robust, modular pipeline for battery management system (BMS) data analysis, in
 - `data/input/` — Input data (not tracked in git)
 - `data/output/` — All pipeline outputs (preprocessed data, results, etc.; not tracked in git)
 - `models/` — Saved models (not tracked in git)
+- `eda_mcp/` — EDA module (industry-standard exploratory data analysis)
 
 ## Usage
 
