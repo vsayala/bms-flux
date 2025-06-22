@@ -1,36 +1,75 @@
 import streamlit as st
 import pandas as pd
-import os
-import glob
 from pathlib import Path
 import plotly.express as px
-import seaborn as sns
-import matplotlib.pyplot as plt
-from io import BytesIO
+from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="BMS-Flux EDA Dashboard", layout="wide")
 st.title("🔋 BMS-Flux Interactive EDA Dashboard")
 
-# --- Run Selector ---
-st.sidebar.header("Run Selector")
+# Auto-refresh every 15 minutes (900,000 ms)
+st_autorefresh(interval=15 * 60 * 1000, key="data_refresh")
 
-runs_path = Path("runs")
-years = sorted([d.name for d in runs_path.iterdir() if d.is_dir()], reverse=True)
-if not years:
-    st.warning("No runs found in the 'runs' directory.")
+# --- Helper Functions ---
+def get_all_runs():
+    """Scan the 'runs' directory and return a sorted list of all run paths."""
+    runs_path = Path("runs")
+    if not runs_path.exists():
+        return []
+    # Ensure we only list directories, ignoring files like .DS_Store
+    all_paths = runs_path.glob("*/*/*/*")
+    return sorted([p for p in all_paths if p.is_dir()], key=lambda p: p.stat().st_mtime, reverse=True)
+
+def initialize_session_state(all_runs):
+    """Initialize the session state on first run or if it's empty."""
+    if 'initialized' not in st.session_state and all_runs:
+        latest_run = all_runs[0]
+        st.session_state.selected_run = latest_run
+        st.session_state.user_has_selected = False
+        st.session_state.initialized = True
+    elif 'selected_run' not in st.session_state and all_runs:
+         st.session_state.selected_run = all_runs[0]
+
+# --- Main Logic ---
+all_runs = get_all_runs()
+if not all_runs:
+    st.warning("No runs found. Please execute the pipeline to generate data.")
     st.stop()
 
-selected_year = st.sidebar.selectbox("Year", years)
-months = sorted([d.name for d in (runs_path / selected_year).iterdir() if d.is_dir()], reverse=True)
-selected_month = st.sidebar.selectbox("Month", months)
-days = sorted([d.name for d in (runs_path / selected_year / selected_month).iterdir() if d.is_dir()], reverse=True)
-selected_day = st.sidebar.selectbox("Day", days)
-run_ids = sorted([d.name for d in (runs_path / selected_year / selected_month / selected_day).iterdir() if d.is_dir()], reverse=True)
-selected_run_id = st.sidebar.selectbox("Run ID", run_ids)
+# Initialize state and check if a newer run is available
+initialize_session_state(all_runs)
+latest_run_on_disk = all_runs[0]
+if not st.session_state.get('user_has_selected', False) and st.session_state.selected_run != latest_run_on_disk:
+    st.session_state.selected_run = latest_run_on_disk
 
-run_folder = runs_path / selected_year / selected_month / selected_day / selected_run_id
-eda_folder = run_folder / "eda"
-st.sidebar.info(f"Displaying data for run: **{selected_run_id}**")
+# --- Sidebar ---
+st.sidebar.header("Run Selector")
+
+def on_run_change():
+    st.session_state.user_has_selected = True
+
+# Find the index of the currently selected run for the selectbox default
+try:
+    current_run_index = all_runs.index(st.session_state.selected_run)
+except ValueError:
+    current_run_index = 0 # Default to latest if not found
+
+# Display runs using their path parts for readability
+st.session_state.selected_run = st.sidebar.selectbox(
+    "Select a Run",
+    options=all_runs,
+    format_func=lambda p: f"{p.parts[-4]}/{p.parts[-3]}/{p.parts[-2]}/{p.name}",
+    index=current_run_index,
+    on_change=on_run_change,
+    key="run_selector"
+)
+
+if st.sidebar.button("Force Refresh"):
+    st.cache_data.clear()
+    st.rerun()
+
+eda_folder = st.session_state.selected_run / "eda"
+st.sidebar.info(f"Displaying data for run: **{st.session_state.selected_run.name}**")
 
 # --- Data Loading ---
 @st.cache_data
@@ -47,7 +86,7 @@ if main_data is None:
     st.stop()
 
 # --- Main Dashboard Area ---
-st.header(f"EDA Report: {selected_run_id}")
+st.header(f"EDA Report: {st.session_state.selected_run.name}")
 
 tab1, tab2, tab3 = st.tabs(["Per-Cell Analytics", "Feature Exploration", "Static Reports"])
 

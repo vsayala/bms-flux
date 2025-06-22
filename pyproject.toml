@@ -26,6 +26,14 @@ dependencies = [
     "tensorflow>=2.11.0",
     # Synthetic Data Vault
     "sdv>=1.20.1",
+    "statsmodels",
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "jinja2",
+    "pdfkit",
+    "streamlit",
+    "streamlit-autorefresh",
 ]
 
 [tool.setuptools.packages.find]

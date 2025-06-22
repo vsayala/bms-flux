@@ -21,11 +21,9 @@ This module performs robust, domain-aware exploratory data analysis (EDA) for ba
   - Cycle life/degradation analysis (capacity fade, resistance growth).
   - Alarm/event analysis (frequency, correlation with failures).
 - **Interactive Dashboard:**
-  - Tabs for summary, time series, boxplots, correlation heatmaps, and outlier highlighting.
-  - Sidebar filters for cell selection, time range, and feature thresholds.
-  - Export buttons for filtered data and plots as CSV/PNG.
-  - Static EDA plots and diagnostics section.
-  - Dashboard launches automatically after pipeline run (unless `--no-dashboard` is passed).
+  - Explore latest EDA run interactively with Streamlit: cell selection, feature exploration, drift, excursions, failure rates, and more.
+  - The dashboard defaults to the latest run and can be manually refreshed.
+  - It automatically refreshes every 15 minutes, preserving your selected run unless you want it to switch to the latest.
 - **Logging:**
   - Every EDA step and error is logged to both a per-run `eda.log` and the pipeline-wide `bms_master.log`.
 - **Outputs:**
@@ -45,17 +43,9 @@ print(result['run_folder'])  # Path to all outputs
 
 ### Launch the Interactive Dashboard
 
-After running EDA, the dashboard will launch automatically (unless you pass `--no-dashboard` to the pipeline):
-
-```bash
-python agent-driver/run_full_pipeline.py
-```
-
-Or launch manually:
-
-```bash
-streamlit run eda_mcp/dashboard.py
-```
+After running EDA, the dashboard will launch automatically. It defaults to the latest run.
+- A "Force Refresh" button is available in the sidebar.
+- The dashboard auto-refreshes every 15 minutes. It will switch to the newest run unless you have manually selected an older one.
 
 ## Output Structure
 - `per_cell_summary.csv`: Per-cell summary statistics
@@ -79,7 +69,7 @@ streamlit run eda_mcp/dashboard.py
 
 ## Requirements
 - See `pyproject.toml` for dependencies.
-- For dashboard: `pip install streamlit plotly seaborn`
+- For dashboard: `pip install streamlit plotly seaborn streamlit-autorefresh`
 
 ---
-For questions or customization, see the code in `tools.py` or contact the maintainers. 
+For questions or customization, see the code in `

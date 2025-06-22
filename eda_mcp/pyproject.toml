@@ -14,7 +14,9 @@ dependencies = [
     "networkx",
     "statsmodels",
     "jinja2",
-    "pdfkit"
+    "pdfkit",
+    "streamlit",
+    "streamlit-autorefresh"
 ]
 
 [build-system]

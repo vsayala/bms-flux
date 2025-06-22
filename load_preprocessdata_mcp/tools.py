@@ -20,7 +20,6 @@ def preprocess_battery_data(data_path: str) -> str:
     """
     # Ensure output directory exists
     os.makedirs(os.path.join("data", "output"), exist_ok=True)
-    run_folder = setup_run_folder()
     df = pd.read_csv(data_path)
     
     # Rename columns to match pipeline expectations

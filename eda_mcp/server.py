@@ -2,7 +2,6 @@ from fastapi import FastAPI, UploadFile, File
 from eda_mcp.tools import run_eda
 import shutil
 import os
-import logging
 import time
 
 app = FastAPI()

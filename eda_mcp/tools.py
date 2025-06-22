@@ -1,24 +1,14 @@
-import os
 import logging
+import time
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import uuid
-import time
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
-from xgboost import XGBClassifier
-import plotly.express as px
-import plotly.io as pio
-import networkx as nx
-from statsmodels.tsa.seasonal import STL
 import jinja2
 import pdfkit
 import base64
 from pathlib import Path
+from sklearn.ensemble import RandomForestClassifier
 
 # Helper for master log
 MASTER_LOG = "bms_master.log"
@@ -299,17 +289,17 @@ def run_eda(data_path: str, run_folder: Path) -> dict:
         def read_csv_txt(path):
             try:
                 return open(path).read()
-            except:
+            except FileNotFoundError:
                 return "(not found)"
         per_cell_stats = read_csv_txt(eda_folder / "per_cell_summary.csv")
         fail_rate = read_csv_txt(eda_folder / "failure_rate_by_cell.csv")
         outlier_stats = read_csv_txt(eda_folder / "cell_voltage_stats.csv")
         plot_files = []
-        for f in os.listdir(eda_folder):
-            if f.endswith(".png"):
-                with open(eda_folder / f, "rb") as imgf:
+        for f in eda_folder.iterdir():
+            if f.suffix == ".png":
+                with open(f, "rb") as imgf:
                     plot_files.append(base64.b64encode(imgf.read()).decode())
-        html_files = [f for f in os.listdir(eda_folder) if f.endswith(".html")]
+        html_files = [f.name for f in eda_folder.iterdir() if f.suffix == ".html"]
         template = jinja2.Template(template_str)
         html_report = template.render(
             job_run_id=run_folder.name,

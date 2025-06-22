@@ -69,12 +69,6 @@ def main():
     """
     logger.info("--- Starting Full BMS-Flux Pipeline ---")
 
-    # Clean up previous runs to ensure a fresh start
-    if os.path.exists("runs"):
-        shutil.rmtree("runs")
-        print("Removed existing 'runs' directory.")
-        logger.info("Removed existing 'runs' directory.")
-
     # Define data paths
     raw_data_path = "data/input/battery_data.csv"
     
