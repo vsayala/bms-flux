@@ -1,0 +1,25 @@
+[project]
+name = "eda-mcp"
+version = "0.1.0"
+description = "Industry-standard EDA MCP for battery data."
+requires-python = ">=3.12"
+dependencies = [
+    "pandas",
+    "matplotlib",
+    "seaborn",
+    "mcp[cli]",
+    "scikit-learn",
+    "xgboost",
+    "plotly",
+    "networkx",
+    "statsmodels",
+    "jinja2",
+    "pdfkit"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["eda_mcp"] 

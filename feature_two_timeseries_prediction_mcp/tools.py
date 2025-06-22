@@ -8,6 +8,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 from xgboost import XGBRegressor
 import matplotlib.pyplot as plt
+from statsmodels.tsa.arima.model import ARIMA
+from pathlib import Path
 
 # Set up logging and job-run folders
 def setup_run_folder():
@@ -138,3 +140,40 @@ def run_full_timeseries_pipeline(file_path, cell_id, steps=10):
         "job_run_id": job_run_id,
         "plots_folder": os.path.abspath(plots_folder)
     }
+
+def predict_cell_timeseries(data_path: str, cell_id: str, steps: int, run_folder: Path) -> dict:
+    """
+    Predicts future values for a given cell's voltage using an ARIMA model.
+    Saves the plot to a dedicated 'timeseries_prediction' folder.
+    """
+    timeseries_folder = run_folder / "timeseries_prediction"
+    timeseries_folder.mkdir(exist_ok=True)
+    logging.info(f"Starting time series prediction. Outputs will be saved to: {timeseries_folder}")
+
+    df = pd.read_csv(data_path, parse_dates=["Timestamp"])
+    cell_data = df[df["Cell ID"] == int(cell_id)]
+    
+    if cell_data.empty:
+        logging.error(f"No data found for Cell ID {cell_id}")
+        return {"error": f"No data for Cell ID {cell_id}"}
+        
+    series = cell_data.set_index("Timestamp")["Voltage (V)"]
+    
+    # ARIMA model
+    model = ARIMA(series, order=(5, 1, 0))
+    model_fit = model.fit()
+    forecast = model_fit.forecast(steps=steps)
+    
+    # Plotting
+    plt.figure(figsize=(12, 6))
+    plt.plot(series.index, series, label='Historical')
+    plt.plot(forecast.index, forecast, label='Forecast')
+    plt.title(f'Voltage Forecast for Cell {cell_id}')
+    plt.legend()
+    
+    plot_path = timeseries_folder / f"forecast_cell_{cell_id}.png"
+    plt.savefig(plot_path)
+    plt.close()
+
+    logging.info(f"Time series forecast complete. Plot saved to {plot_path}")
+    return {"timeseries_folder": str(timeseries_folder), "plot_path": str(plot_path)}
