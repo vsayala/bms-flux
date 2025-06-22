@@ -3,7 +3,7 @@
 # or
 # from .fastmcp import FastMCP
 
-from fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP
 from tools import run_full_timeseries_pipeline
 
 mcp = FastMCP("bms_timeseries_prediction_mcp")
@@ -18,9 +18,19 @@ def predict_cell_timeseries(
     """
     try:
         result = run_full_timeseries_pipeline(data_path, cell_id, steps)
-        return result
+        return {
+            "status": "success",
+            "message": "Timeseries prediction complete",
+            "data": result,
+            "log_path": result.get('plots_folder', None)
+        }
     except Exception as e:
-        return {"error": f"{str(e)}"}
+        return {
+            "status": "error",
+            "message": str(e),
+            "data": None,
+            "log_path": None
+        }
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")

@@ -7,15 +7,12 @@ from tensorflow.keras.layers import Dense, Dropout, Input, Lambda
 from tensorflow.keras.optimizers import Adam
 from sklearn.ensemble import IsolationForest
 from sklearn.preprocessing import RobustScaler, PolynomialFeatures
-from sklearn.linear_model import LogisticRegression
 from sklearn.impute import SimpleImputer
-from sklearn.metrics import precision_recall_fscore_support, roc_auc_score, confusion_matrix
 import tensorflow as tf
 from tensorflow.keras.callbacks import TensorBoard
 from datetime import datetime
-from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
-from sklearn.experimental import enable_iterative_imputer
+from sklearn.experimental import enable_iterative_imputer  # noqa: F401
 from sklearn.impute import IterativeImputer
 from utils.model_utils import save_model
 
@@ -28,13 +25,13 @@ def load_and_preprocess_data(data_path, chunksize=100000):
     Loads and preprocesses battery sensor data for anomaly detection.
     Handles outlier cleaning, feature engineering, MICE imputation, and scaling.
     Input CSV must contain columns:
-        - CellVoltage, CellTemperature, InstantaneousCurrent, AmbientTemperature, CellSpecificGravity
+        - Voltage (V), Cell Temperature (°C), Current (A), Ambient Temperature (°C), CellSpecificGravity
     Returns:
         - scaled_features: np.ndarray of features for modeling
         - data: pd.DataFrame (original + engineered columns)
     """
     required_columns = [
-        "CellVoltage", "CellTemperature", "InstantaneousCurrent", "AmbientTemperature", "CellSpecificGravity"
+        "Voltage (V)", "Cell Temperature (°C)", "Current (A)", "Ambient Temperature (°C)", "CellSpecificGravity"
     ]
     chunk_list = []
     for chunk in pd.read_csv(data_path, chunksize=chunksize):
@@ -42,21 +39,21 @@ def load_and_preprocess_data(data_path, chunksize=100000):
         if missing_columns:
             raise ValueError(f"Missing columns: {missing_columns}")
 
-        chunk["CellVoltage"] = chunk["CellVoltage"].apply(lambda x: np.nan if x >= 60 else x)
-        chunk["CellTemperature"] = chunk["CellTemperature"].apply(lambda x: np.nan if x >= 1000 else x)
+        chunk["Voltage (V)"] = chunk["Voltage (V)"].apply(lambda x: np.nan if x >= 60 else x)
+        chunk["Cell Temperature (°C)"] = chunk["Cell Temperature (°C)"].apply(lambda x: np.nan if x >= 1000 else x)
         chunk["CellSpecificGravity"] = chunk["CellSpecificGravity"].apply(lambda x: np.nan if x >= 50 else x)
-        chunk = chunk.dropna(subset=["InstantaneousCurrent", "AmbientTemperature"])
-        chunk["Power (W)"] = chunk["CellVoltage"] * chunk["InstantaneousCurrent"]
-        chunk["Resistance (Ohms)"] = chunk["CellVoltage"] / (chunk["InstantaneousCurrent"] + 1e-6)
-        chunk["Temperature Deviation"] = abs(chunk["CellTemperature"] - chunk["AmbientTemperature"])
-        chunk["dTemperature/dt"] = chunk["CellTemperature"].diff().fillna(0)
-        chunk["dVoltage/dt"] = chunk["CellVoltage"].diff().fillna(0)
-        chunk["Rolling_Mean_Temperature"] = chunk["CellTemperature"].rolling(window=5).mean().fillna(0)
-        chunk["Rolling_Std_Temperature"] = chunk["CellTemperature"].rolling(window=5).std().fillna(0)
-        chunk["Voltage*Current"] = chunk["CellVoltage"] * chunk["InstantaneousCurrent"]
-        chunk["Voltage^2"] = chunk["CellVoltage"] ** 2
-        chunk["Lag_Voltage"] = chunk["CellVoltage"].shift(1).fillna(0)
-        chunk["Lag_Current"] = chunk["InstantaneousCurrent"].shift(1).fillna(0)
+        chunk = chunk.dropna(subset=["Current (A)", "Ambient Temperature (°C)"])
+        chunk["Power (W)"] = chunk["Voltage (V)"] * chunk["Current (A)"]
+        chunk["Resistance (Ohms)"] = chunk["Voltage (V)"] / (chunk["Current (A)"] + 1e-6)
+        chunk["Temperature Deviation"] = abs(chunk["Cell Temperature (°C)"] - chunk["Ambient Temperature (°C)"])
+        chunk["dTemperature/dt"] = chunk["Cell Temperature (°C)"].diff().fillna(0)
+        chunk["dVoltage/dt"] = chunk["Voltage (V)"].diff().fillna(0)
+        chunk["Rolling_Mean_Temperature"] = chunk["Cell Temperature (°C)"].rolling(window=5).mean().fillna(0)
+        chunk["Rolling_Std_Temperature"] = chunk["Cell Temperature (°C)"].rolling(window=5).std().fillna(0)
+        chunk["Voltage*Current"] = chunk["Voltage (V)"] * chunk["Current (A)"]
+        chunk["Voltage^2"] = chunk["Voltage (V)"] ** 2
+        chunk["Lag_Voltage"] = chunk["Voltage (V)"].shift(1).fillna(0)
+        chunk["Lag_Current"] = chunk["Current (A)"].shift(1).fillna(0)
         chunk_list.append(chunk)
     data = pd.concat(chunk_list, ignore_index=True)
     mice_imputer = IterativeImputer(max_iter=10, random_state=0)
@@ -65,8 +62,8 @@ def load_and_preprocess_data(data_path, chunksize=100000):
     for col in required_columns:
         data[col] = imputed_df[col]
     poly = PolynomialFeatures(degree=2, include_bias=False)
-    poly_features = poly.fit_transform(data[["CellVoltage", "InstantaneousCurrent", "CellTemperature"]])
-    poly_feature_names = poly.get_feature_names_out(["CellVoltage", "InstantaneousCurrent", "CellTemperature"])
+    poly_features = poly.fit_transform(data[["Voltage (V)", "Current (A)", "Cell Temperature (°C)"]])
+    poly_feature_names = poly.get_feature_names_out(["Voltage (V)", "Current (A)", "Cell Temperature (°C)"])
     poly_df = pd.DataFrame(poly_features, columns=poly_feature_names)
     data = pd.concat([data.reset_index(drop=True), poly_df.reset_index(drop=True)], axis=1)
     imputer = SimpleImputer(strategy="mean")
@@ -145,7 +142,6 @@ def run_hybrid_anomaly_detection(data_path, chunksize=100000):
     # Train models
     svm = OneClassSVM(nu=0.05, kernel="rbf", gamma="scale").fit(X)
     iforest = IsolationForest(contamination=0.05, random_state=42, n_estimators=500, max_samples=0.9).fit(X)
-    vae = None  # Placeholder, if you want to pickle Keras models, use model.save('h5')
     svm_scores = svm.decision_function(X)
     iforest_scores = -iforest.decision_function(X)
     vae_scores = run_variational_autoencoder(X)
@@ -153,7 +149,7 @@ def run_hybrid_anomaly_detection(data_path, chunksize=100000):
     threshold = np.percentile(hybrid_scores, 95)
     hybrid_anomalies = (hybrid_scores > threshold).astype(int)
     data["Hybrid Anomalies"] = hybrid_anomalies
-    out_path = "hybrid_results.csv"
+    out_path = os.path.join("data", "output", "hybrid_results.csv")
     data.to_csv(out_path, index=False)
     # Model versioning
     models_dir = "models"
@@ -165,9 +161,9 @@ def run_hybrid_anomaly_detection(data_path, chunksize=100000):
 def run_3d_visualization(
     csv_path,
     anomalies_column="Hybrid Anomalies",
-    x_col="CellVoltage",
-    y_col="InstantaneousCurrent",
-    z_col="CellTemperature",
+    x_col="Voltage (V)",
+    y_col="Current (A)",
+    z_col="Cell Temperature (°C)",
     out_path="anomaly_3d_plot.png"
 ):
     """

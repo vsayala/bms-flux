@@ -3,7 +3,7 @@ name = "feature-one-anamoly-detection-mcp"
 version = "0.1.0"
 description = "MCP Server for hybrid anomaly detection on battery sensor data."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = "==3.12.*"
 dependencies = [
     "mcp[cli]>=1.8.0",
     "numpy>=1.24.3",

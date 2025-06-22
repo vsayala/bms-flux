@@ -124,7 +124,7 @@ def plot_timeseries_predictions(df, predictions, target_columns, cell_id, plots_
 def run_full_timeseries_pipeline(file_path, cell_id, steps=10):
     plots_folder, job_run_id = setup_run_folder()
     target_columns = [
-        "Voltage (V)", "Current (A)", "Resistance (Ohms)", "SOC (%)", "SOD (%)", "SOH (%)",
+        "Voltage (V)", "Current (A)", "Resistance (Ohms)", "SOC (%)", "SOD (%)",
         "Cell Temperature (°C)", "Ambient Temperature (°C)"
     ]
     df = load_and_prepare_timeseries_data(file_path, cell_id, target_columns)

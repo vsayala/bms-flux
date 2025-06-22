@@ -1,0 +1,16 @@
+[project]
+name = "feature-three-failure-prediction-mcp"
+version = "0.1.0"
+description = "MCP Server for battery failure prediction using XGBoost."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mcp[cli]>=1.8.0",
+    "pandas>=1.5.3",
+    "numpy>=1.24.3",
+    "scikit-learn>=1.2.2",
+    "xgboost>=1.7.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]

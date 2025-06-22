@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# macOS
+.DS_Store
+
+# Output and logs
+runs/
+logs/
+
+# Lock files
+uv.lock
+
+# Data
+*.csv 
+data/
+data/input/
+data/output/
+
+# Models
+models/
+
+# ... existing code ...
+bms_master.log
+# ... existing code ...
+
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/ 

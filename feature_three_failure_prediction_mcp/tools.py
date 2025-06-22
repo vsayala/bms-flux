@@ -3,12 +3,17 @@ import time
 import uuid
 import logging
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score
 from utils.model_utils import save_model
 
 def setup_run_folder():
+    """
+    Sets up a unique directory for the current run to store outputs and logs.
+    Returns the path to the folder and a unique job run ID.
+    """
     current_datetime = time.strftime("%Y-%m-%d_%H-%M-%S")
     unique_id = str(uuid.uuid4())
     job_run_id = f"{current_datetime}_{unique_id}"
@@ -21,6 +26,9 @@ def setup_run_folder():
     return plots_folder, job_run_id
 
 def timing_decorator(func):
+    """
+    Decorator to time and log the execution of a function.
+    """
     def wrapper(*args, **kwargs):
         start_time = time.time()
         logging.info(f"Started execution of '{func.__name__}'")
@@ -36,14 +44,24 @@ def timing_decorator(func):
     return wrapper
 
 @timing_decorator
-def train_failure_model(data_path, target_column="IsDead"):
+def train_failure_model(data_path, target_column="Hybrid Anomalies"):
+    """
+    Trains a failure prediction model using XGBoost on the given data.
+    Returns the trained model, accuracy, and model path.
+    """
     df = pd.read_csv(data_path)
     # --- Robustness Patch: Check required columns ---
     if target_column not in df.columns:
         raise ValueError(f"Missing required target column: {target_column}")
+
     X = df.drop(columns=[target_column])
     y = df[target_column]
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    # --- FIX: Select only numeric features for training ---
+    X_numeric = X.select_dtypes(include=np.number)
+    
+    X_train, X_test, y_train, y_test = train_test_split(X_numeric, y, test_size=0.2, random_state=42)
+
     model = XGBClassifier(random_state=42)
     model.fit(X_train, y_train)
     # Save with versioning
@@ -55,19 +73,32 @@ def train_failure_model(data_path, target_column="IsDead"):
 
 @timing_decorator
 def predict_failing_cells(model, df):
+    """
+    Predicts which cells are likely to fail using the trained model.
+    Returns a list of failing cell IDs.
+    """
     # --- Robustness Patch: Check required columns ---
-    if "IsDead" not in df.columns:
-        raise ValueError("Missing 'IsDead' column in data for prediction")
+    if "Hybrid Anomalies" not in df.columns:
+        raise ValueError("Missing 'Hybrid Anomalies' column in data for prediction")
     if "Cell ID" not in df.columns:
         raise ValueError("Missing 'Cell ID' column in data for prediction")
+
+    # --- FIX: Select only numeric features for prediction ---
+    X = df.drop(columns=["Hybrid Anomalies"])
+    X_numeric = X.select_dtypes(include=np.number)
+
     # Returns unique cell IDs predicted to fail
-    predictions = model.predict(df.drop(columns=["IsDead"]))
+    predictions = model.predict(X_numeric)
     failure_cells = df.loc[predictions == 1, "Cell ID"].unique().tolist()
     logging.info(f"Cells predicted to fail: {failure_cells}")
     return failure_cells
 
 @timing_decorator
 def run_full_failure_prediction_pipeline(data_path):
+    """
+    Runs the full failure prediction pipeline: trains the model and predicts failing cells.
+    Returns a dictionary with accuracy, failing cells, job run ID, plots folder, and model path.
+    """
     plots_folder, job_run_id = setup_run_folder()
     df = pd.read_csv(data_path)
     model, acc, model_path = train_failure_model(data_path)

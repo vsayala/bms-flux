@@ -11,12 +11,22 @@ import pandas as pd
 import os
 import logging
 
+# --- Logging setup: ensure logs are written to file in run folder ---
+log_dir = "runs/logs"
+os.makedirs(log_dir, exist_ok=True)
+logging.basicConfig(
+    filename=os.path.join(log_dir, "preprocess-log.log"),
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s"
+)
+
 mcp = FastMCP("battery_preprocessing_mcp")
 
 @mcp.tool()
 def health_check() -> dict:
     return {"status": "ok", "message": "MCP server is healthy", "cwd": os.getcwd()}
 
+@mcp.tool()
 def export_schema(df, out_path):
     schema = {"columns": list(df.columns), "dtypes": {col: str(df[col].dtype) for col in df.columns}}
     import json
@@ -32,6 +42,7 @@ def clean_and_filter_data(data_path: str, chunksize: int = 100000) -> dict:
         df = read_and_filter_chunks(data_path, chunksize)
         out_path = save_processed_data(df, run_folder, "battery_cleaned.csv")
         schema_path = export_schema(df, os.path.join(run_folder, "battery_cleaned_schema.json"))
+        logging.info(f"Cleaned and filtered data saved to {out_path}")
         return {
             "status": "success",
             "message": f"Cleaned data saved to {out_path}",
@@ -39,6 +50,7 @@ def clean_and_filter_data(data_path: str, chunksize: int = 100000) -> dict:
             "log_path": os.path.join(run_folder, "preprocess-log.log")
         }
     except Exception as e:
+        logging.error(f"Error in clean_and_filter_data: {e}")
         return {
             "status": "error",
             "message": str(e),
@@ -54,6 +66,7 @@ def engineer_battery_features(csv_path: str) -> dict:
         df = feature_engineering(df)
         out_path = save_processed_data(df, run_folder, "battery_with_features.csv")
         schema_path = export_schema(df, os.path.join(run_folder, "battery_with_features_schema.json"))
+        logging.info(f"Feature-engineered data saved to {out_path}")
         return {
             "status": "success",
             "message": f"Feature-engineered data saved to {out_path}",
@@ -61,6 +74,7 @@ def engineer_battery_features(csv_path: str) -> dict:
             "log_path": os.path.join(run_folder, "preprocess-log.log")
         }
     except Exception as e:
+        logging.error(f"Error in engineer_battery_features: {e}")
         return {
             "status": "error",
             "message": str(e),
@@ -76,6 +90,7 @@ def impute_battery_data_mice(csv_path: str) -> dict:
         df = mice_imputation(df)
         out_path = save_processed_data(df, run_folder, "battery_mice_imputed.csv")
         schema_path = export_schema(df, os.path.join(run_folder, "battery_mice_imputed_schema.json"))
+        logging.info(f"MICE-imputed data saved to {out_path}")
         return {
             "status": "success",
             "message": f"MICE-imputed data saved to {out_path}",
@@ -83,6 +98,7 @@ def impute_battery_data_mice(csv_path: str) -> dict:
             "log_path": os.path.join(run_folder, "preprocess-log.log")
         }
     except Exception as e:
+        logging.error(f"Error in impute_battery_data_mice: {e}")
         return {
             "status": "error",
             "message": str(e),
@@ -98,6 +114,7 @@ def impute_and_scale_battery_data(csv_path: str) -> dict:
         df = mean_impute_and_scale(df)
         out_path = save_processed_data(df, run_folder, "battery_final_scaled.csv")
         schema_path = export_schema(df, os.path.join(run_folder, "battery_final_scaled_schema.json"))
+        logging.info(f"Data imputed (mean) and scaled. Saved to {out_path}")
         return {
             "status": "success",
             "message": f"Data imputed (mean) and scaled. Saved to {out_path}",
@@ -105,6 +122,7 @@ def impute_and_scale_battery_data(csv_path: str) -> dict:
             "log_path": os.path.join(run_folder, "preprocess-log.log")
         }
     except Exception as e:
+        logging.error(f"Error in impute_and_scale_battery_data: {e}")
         return {
             "status": "error",
             "message": str(e),
@@ -131,6 +149,7 @@ def preprocess_battery_data_tool(
         if out_path and os.path.exists(out_path):
             df = pd.read_csv(out_path)
             export_schema(df, schema_path)
+        logging.info(f"Preprocessing complete. Data saved to {out_path}")
         return {
             "status": "success",
             "message": msg,
@@ -138,6 +157,7 @@ def preprocess_battery_data_tool(
             "log_path": log_path
         }
     except Exception as e:
+        logging.error(f"Error in preprocess_battery_data_tool: {e}")
         return {
             "status": "error",
             "message": str(e),

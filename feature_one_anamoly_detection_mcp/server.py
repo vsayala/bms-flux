@@ -3,7 +3,6 @@ from tools import (
     run_hybrid_anomaly_detection,
     run_3d_visualization,
 )
-from utils.model_utils import save_model
 
 mcp = FastMCP("anomaly_detection_mcp")
 

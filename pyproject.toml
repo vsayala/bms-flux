@@ -1,0 +1,51 @@
+[project]
+name = "bms-flux"
+version = "0.1.0"
+description = "Battery Data Synthetic Generation, Forecasting, Anomaly/Failure Detection Platform"
+authors = [
+    {name = "Your Name", email = "your@email.com"}
+]
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+
+# Main dependencies for orchestrating and running all MCPs and shared tools
+dependencies = [
+    # Orchestration/CLI
+    "mcp[cli]>=1.8.0",
+    # Data science core
+    "pandas>=1.5.3",
+    "numpy>=1.24.3",
+    "scikit-learn>=1.2.2",
+    "matplotlib>=3.7.1",
+    "seaborn>=0.12.2",
+    "plotly>=6.0.1",
+    "kaleido==0.2.1",
+    "xgboost>=2.0.3",
+    # Deep learning (for anomaly MCP)
+    "tensorflow>=2.11.0",
+    # Synthetic Data Vault
+    "sdv>=1.20.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = [
+    "tests*",
+    "examples*",
+    "docs*"
+]
+
+[project.optional-dependencies]
+# For development and testing
+# Install with: pip install -e .[dev]
+dev = [
+    "pytest>=7.0.0",
+    "mypy>=1.0.0",
+    "ruff>=0.1.0",
+    "black>=24.0.0"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

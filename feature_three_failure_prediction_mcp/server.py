@@ -1,3 +1,6 @@
+# Update the import path below if FastMCP is located elsewhere, for example:
+# from fastmcp import FastMCP
+
 from mcp.server.fastmcp import FastMCP
 from tools import run_full_failure_prediction_pipeline
 

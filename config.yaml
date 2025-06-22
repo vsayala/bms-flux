@@ -1,0 +1,7 @@
+preprocessing:
+  impute_strategy: mean
+  scale_features: true
+anomaly_detection:
+  contamination: 0.05
+  svm_nu: 0.05
+  iforest_estimators: 500 
