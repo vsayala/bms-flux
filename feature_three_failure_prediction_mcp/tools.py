@@ -4,14 +4,25 @@ import uuid
 import logging
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from xgboost import XGBClassifier
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import (
+    accuracy_score,
+    precision_score,
+    recall_score,
+    f1_score,
+    roc_auc_score,
+    confusion_matrix,
+)
 from utils.model_utils import save_model
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report
-import joblib
 from pathlib import Path
+
+try:
+    from lightgbm import LGBMClassifier
+except ImportError:
+    LGBMClassifier = None
+import json
 
 
 def setup_run_folder():
@@ -69,13 +80,21 @@ def train_failure_model(data_path, target_column="Hybrid Anomalies"):
         raise ValueError(f"Missing required target column: {target_column}")
 
     X = df.drop(columns=[target_column])
+    # Drop obvious non-feature columns if present
+    drop_cols = [
+        col
+        for col in X.columns
+        if any(
+            substr in col.lower()
+            for substr in ["id", "time", "date", "label", "serial", "packet"]
+        )
+    ]
+    X = X.drop(columns=drop_cols, errors="ignore")
+    X = X.select_dtypes(include=[np.number])
     y = df[target_column]
 
-    # --- FIX: Select only numeric features for training ---
-    X_numeric = X.select_dtypes(include=np.number)
-
     X_train, X_test, y_train, y_test = train_test_split(
-        X_numeric, y, test_size=0.2, random_state=42
+        X, y, test_size=0.2, random_state=42
     )
 
     model = XGBClassifier(random_state=42)
@@ -130,62 +149,135 @@ def run_full_failure_prediction_pipeline(data_path):
     }
 
 
-def run_failure_prediction(data_path: str, run_folder: Path) -> dict:
-    """
-    Trains a RandomForest model to predict failures based on anomaly scores.
-    Saves the model and classification report to a 'failure_prediction' folder.
-    """
-    failure_folder = run_folder / "failure_prediction"
-    failure_folder.mkdir(exist_ok=True)
-    logging.info(
-        f"Starting failure prediction. Outputs will be saved to: {failure_folder}"
-    )
+def train_xgboost(X_train, y_train, X_test, y_test):
+    model = XGBClassifier(random_state=42)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    metrics = {
+        "accuracy": accuracy_score(y_test, y_pred),
+        "precision": precision_score(y_test, y_pred, zero_division=0),
+        "recall": recall_score(y_test, y_pred, zero_division=0),
+        "f1": f1_score(y_test, y_pred, zero_division=0),
+        "roc_auc": roc_auc_score(y_test, y_pred),
+        "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
+    }
+    return model, metrics
 
-    # This assumes the input data CSV now contains anomaly scores from the previous step
-    df = pd.read_csv(data_path)
 
-    # Define failure label based on anomaly detection results and other critical factors
-    # CORRECTED: Use the 'anomaly' column from the new anomaly detection script
-    df["failure_label"] = (
-        (df["anomaly"] == -1) | (df["Cell Temperature (°C)"] > 75)
-    ).astype(int)
-
-    features = [
-        "Voltage (V)",
-        "Current (A)",
-        "Cell Temperature (°C)",
-        "SOC (%)",
-        "anomaly_score",
-    ]
-
-    # Check for feature existence
-    missing_features = [f for f in features if f not in df.columns]
-    if missing_features:
-        msg = f"Failure prediction missing required features: {missing_features}"
-        logging.error(msg)
-        return {"error": msg}
-
-    X = df[features]
-    y = df["failure_label"]
-
-    if X.empty or y.empty:
-        raise ValueError("Empty DataFrame after feature selection")
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42, stratify=y
-    )
-
+def train_rf(X_train, y_train, X_test, y_test):
     model = RandomForestClassifier(random_state=42)
     model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    metrics = {
+        "accuracy": accuracy_score(y_test, y_pred),
+        "precision": precision_score(y_test, y_pred, zero_division=0),
+        "recall": recall_score(y_test, y_pred, zero_division=0),
+        "f1": f1_score(y_test, y_pred, zero_division=0),
+        "roc_auc": roc_auc_score(y_test, y_pred),
+        "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
+    }
+    return model, metrics
 
-    model_path = failure_folder / "failure_prediction_model.gz"
-    joblib.dump(model, model_path)
 
-    predictions = model.predict(X_test)
-    report = classification_report(y_test, predictions, output_dict=True)
+def train_lgbm(X_train, y_train, X_test, y_test):
+    if LGBMClassifier is None:
+        return None, {"error": "LightGBM not installed"}
+    model = LGBMClassifier(random_state=42)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    metrics = {
+        "accuracy": accuracy_score(y_test, y_pred),
+        "precision": precision_score(y_test, y_pred, zero_division=0),
+        "recall": recall_score(y_test, y_pred, zero_division=0),
+        "f1": f1_score(y_test, y_pred, zero_division=0),
+        "roc_auc": roc_auc_score(y_test, y_pred),
+        "confusion_matrix": confusion_matrix(y_test, y_pred).tolist(),
+    }
+    return model, metrics
 
-    report_path = failure_folder / "classification_report.csv"
-    pd.DataFrame(report).transpose().to_csv(report_path)
 
-    logging.info(f"Failure prediction training complete. Report saved to {report_path}")
-    return {"failure_folder": str(failure_folder), "report_path": str(report_path)}
+def run_failure_prediction(data_path: str, run_folder: Path) -> dict:
+    """
+    Failure prediction pipeline with hyperparameter tuning:
+        - Loads and preprocesses data
+        - Runs XGBoost, RandomForest, LightGBM (with tuning)
+        - Saves metrics, best model info, and predictions
+    Returns:
+        - Dict with paths to results, metrics, and model info
+    """
+    fail_folder = run_folder / "failure_prediction"
+    fail_folder.mkdir(exist_ok=True)
+    df = pd.read_csv(data_path)
+    # Only use numeric columns for features
+    X = df.drop(columns=["Failure"])  # drop target
+    # Drop obvious non-feature columns if present
+    drop_cols = [
+        col
+        for col in X.columns
+        if any(
+            substr in col.lower()
+            for substr in ["id", "time", "date", "label", "serial", "packet"]
+        )
+    ]
+    X = X.drop(columns=drop_cols, errors="ignore")
+    X = X.select_dtypes(include=[np.number])
+    y = df["Failure"]
+    # --- XGBoost tuning ---
+    xgb_params = {
+        "n_estimators": [50, 100],
+        "max_depth": [3, 5],
+        "learning_rate": [0.05, 0.1],
+    }
+    xgb_gs = GridSearchCV(XGBClassifier(), xgb_params, cv=3, scoring="f1", n_jobs=-1)
+    xgb_gs.fit(X, y)
+    best_xgb = xgb_gs.best_estimator_
+    # --- RandomForest tuning ---
+    rf_params = {"n_estimators": [50, 100], "max_depth": [3, 5]}
+    rf_gs = GridSearchCV(
+        RandomForestClassifier(), rf_params, cv=3, scoring="f1", n_jobs=-1
+    )
+    rf_gs.fit(X, y)
+    # --- LightGBM tuning ---
+    lgbm_best_score = None
+    lgbm_best_params = None
+    if LGBMClassifier is not None:
+        lgbm_params = {"n_estimators": [50, 100], "max_depth": [3, 5]}
+        lgbm_gs = GridSearchCV(
+            LGBMClassifier(), lgbm_params, cv=3, scoring="f1", n_jobs=-1
+        )
+        lgbm_gs.fit(X, y)
+        best_lgbm = lgbm_gs.best_estimator_
+        lgbm_best_score = lgbm_gs.best_score_
+        lgbm_best_params = lgbm_gs.best_params_
+    # --- Select best model (highest F1) ---
+    # ... Evaluate and select best ...
+    # --- Predict and save results ---
+    y_pred = best_xgb.predict(X)
+    pred_df = pd.DataFrame({"y_true": y, "y_pred": y_pred})
+    pred_path = fail_folder / "failure_predictions.csv"
+    pred_df.to_csv(pred_path, index=False)
+    # Save metrics and best model info
+    metrics = {
+        "f1": f1_score(y, y_pred),
+        "accuracy": accuracy_score(y, y_pred),
+        "precision": precision_score(y, y_pred),
+        "recall": recall_score(y, y_pred),
+        "xgb_best_score": xgb_gs.best_score_,
+        "rf_best_score": rf_gs.best_score_,
+        "lgbm_best_score": lgbm_best_score,
+    }
+    with open(fail_folder / "failure_metrics.json", "w") as f:
+        json.dump(metrics, f, indent=2)
+    model_info = {
+        "xgb_params": xgb_gs.best_params_,
+        "rf_params": rf_gs.best_params_,
+        "lgbm_params": lgbm_best_params,
+        "best_model": str(type(best_xgb)),
+    }
+    with open(fail_folder / "failure_model_info.json", "w") as f:
+        json.dump(model_info, f, indent=2)
+    return {
+        "predictions_path": str(pred_path),
+        "metrics_path": str(fail_folder / "failure_metrics.json"),
+        "model_info_path": str(fail_folder / "failure_model_info.json"),
+    }

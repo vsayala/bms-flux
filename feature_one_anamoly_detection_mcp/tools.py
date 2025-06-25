@@ -14,10 +14,10 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from sklearn.experimental import enable_iterative_imputer  # noqa: F401
 from sklearn.impute import IterativeImputer
-from utils.model_utils import save_model
 from pathlib import Path
 import logging
 import plotly.express as px
+from sklearn.model_selection import GridSearchCV
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "0"
 os.environ["TF_METAL_LOG_LEVEL"] = "1"
@@ -172,37 +172,128 @@ def hybrid_anomaly_scoring(svm_scores, iforest_scores, vae_scores):
     return norm(svm_scores) + norm(iforest_scores) + norm(vae_scores)
 
 
-def run_hybrid_anomaly_detection(data_path, chunksize=100000):
+def run_hybrid_anomaly_detection(data_path: str, run_folder: Path) -> dict:
     """
-    Full anomaly detection pipeline:
+    Full anomaly detection pipeline with hyperparameter tuning:
         - Loads and preprocesses data
-        - Runs SVM, Isolation Forest, VAE
+        - Runs SVM, Isolation Forest, VAE (with tuning)
         - Combines scores, thresholds top 5% as anomalies
         - Outputs CSV with 'Hybrid Anomalies' column
+        - Saves metrics and model info
     Returns:
-        - Path to results CSV
+        - Dict with paths to results, metrics, and model info
     """
-    X, data = load_and_preprocess_data(data_path, chunksize)
-    # Train models
-    svm = OneClassSVM(nu=0.05, kernel="rbf", gamma="scale").fit(X)
-    iforest = IsolationForest(
-        contamination=0.05, random_state=42, n_estimators=500, max_samples=0.9
-    ).fit(X)
-    svm_scores = svm.decision_function(X)
-    iforest_scores = -iforest.decision_function(X)
+    anomaly_folder = run_folder / "anomaly"
+    anomaly_folder.mkdir(exist_ok=True)
+    df = pd.read_csv(data_path)
+    features = ["Voltage (V)", "Current (A)", "Cell Temperature (°C)"]
+    if not all(feature in df.columns for feature in features):
+        msg = f"Required features for anomaly detection not found in data: {features}"
+        logger.error(msg)
+        return {"error": msg}
+    X = df[features].copy()
+    X.fillna(X.mean(), inplace=True)
+    # Propagate is_edge_case if present
+    if "is_edge_case" in df.columns:
+        edge_case_col = df["is_edge_case"].copy()
+    else:
+        edge_case_col = pd.Series([False] * len(df))
+    # --- Hyperparameter tuning for Isolation Forest ---
+    if_params = {
+        "n_estimators": [100, 300, 500],
+        "max_samples": [0.7, 0.9, 1.0],
+        "contamination": [0.03, 0.05, 0.1],
+    }
+    if_gs = GridSearchCV(
+        IsolationForest(random_state=42),
+        if_params,
+        cv=3,
+        scoring="neg_mean_squared_error",
+        n_jobs=-1,
+    )
+    if_gs.fit(X)
+    best_iforest = if_gs.best_estimator_
+    # --- Hyperparameter tuning for One-Class SVM ---
+    svm_params = {
+        "nu": [0.03, 0.05, 0.1],
+        "kernel": ["rbf"],
+        "gamma": ["scale", 0.1, 1],
+    }
+    svm_gs = GridSearchCV(
+        OneClassSVM(), svm_params, cv=3, scoring="accuracy", n_jobs=-1
+    )
+    svm_gs.fit(X)
+    best_svm = svm_gs.best_estimator_
+    # VAE (no tuning for now)
     vae_scores = run_variational_autoencoder(X)
-    hybrid_scores = hybrid_anomaly_scoring(svm_scores, iforest_scores, vae_scores)
+
+    # Hybrid score
+    def norm(x):
+        return (x - np.min(x)) / (np.max(x) - np.min(x) + 1e-8)
+
+    svm_scores = best_svm.decision_function(X)
+    iforest_scores = -best_iforest.decision_function(X)
+    hybrid_scores = norm(svm_scores) + norm(iforest_scores) + norm(vae_scores)
     threshold = np.percentile(hybrid_scores, 95)
     hybrid_anomalies = (hybrid_scores > threshold).astype(int)
-    data["Hybrid Anomalies"] = hybrid_anomalies
-    out_path = os.path.join("data", "output", "hybrid_results.csv")
-    data.to_csv(out_path, index=False)
-    # Model versioning
-    models_dir = "models"
-    svm_path, _ = save_model(svm, "anomaly_svm", models_dir)
-    iforest_path, _ = save_model(iforest, "anomaly_iforest", models_dir)
-    # If using Keras, save as H5; for now, skip vae_path
-    return out_path, [svm_path, iforest_path]
+    df["hybrid_anomaly_score"] = hybrid_scores
+    df["hybrid_anomaly"] = hybrid_anomalies
+    df["anomaly_label"] = df["hybrid_anomaly"].apply(
+        lambda x: "Anomaly" if x == 1 else "Normal"
+    )
+    df["is_edge_case"] = edge_case_col
+    # Save results
+    results_csv_path = anomaly_folder / "anomaly_results.csv"
+    df.to_csv(results_csv_path, index=False)
+    logger.info(f"Saved hybrid anomaly detection results to {results_csv_path}")
+    # Save model info
+    model_info = {
+        "svm": str(type(best_svm)),
+        "iforest": str(type(best_iforest)),
+        "vae": "keras.Model",
+        "params": {
+            "svm": best_svm.get_params(),
+            "iforest": best_iforest.get_params(),
+            "svm_best_score": svm_gs.best_score_,
+            "iforest_best_score": if_gs.best_score_,
+            "threshold": float(threshold),
+        },
+        "model_files": {
+            "svm": str(anomaly_folder / "anomaly_svm_model.joblib"),
+            "iforest": str(anomaly_folder / "anomaly_iforest_model.joblib"),
+        },
+    }
+    import joblib
+
+    joblib.dump(best_svm, anomaly_folder / "anomaly_svm_model.joblib")
+    joblib.dump(best_iforest, anomaly_folder / "anomaly_iforest_model.joblib")
+    model_info_path = anomaly_folder / "model_info.json"
+    import json
+
+    with open(model_info_path, "w") as f:
+        json.dump(model_info, f, indent=2)
+    # Save metrics (unsupervised: proportion flagged, score stats)
+    metrics = {
+        "proportion_flagged": float(np.mean(hybrid_anomalies)),
+        "score_mean": float(np.mean(hybrid_scores)),
+        "score_std": float(np.std(hybrid_scores)),
+        "score_min": float(np.min(hybrid_scores)),
+        "score_max": float(np.max(hybrid_scores)),
+        "n_edge_cases": int(edge_case_col.sum()),
+    }
+    metrics_path = anomaly_folder / "metrics.json"
+    with open(metrics_path, "w") as f:
+        json.dump(metrics, f, indent=2)
+    # 3D plot
+    plot_html_path = create_and_save_3d_anomaly_plot(df, anomaly_folder)
+    return {
+        "anomaly_results_path": str(results_csv_path),
+        "anomaly_plot_path": plot_html_path,
+        "metrics_path": str(metrics_path),
+        "model_info_path": str(model_info_path),
+        "svm_model_file": str(anomaly_folder / "anomaly_svm_model.joblib"),
+        "iforest_model_file": str(anomaly_folder / "anomaly_iforest_model.joblib"),
+    }
 
 
 def run_3d_visualization(

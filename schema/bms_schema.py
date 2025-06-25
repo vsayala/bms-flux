@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Union
 
 
 class BMSSchema(BaseModel):
@@ -80,6 +80,6 @@ class BMSSchema(BaseModel):
     # Optional fields
     ProtocolVersion: Optional[float] = None
     PacketDateTime: Optional[str] = None
-    DeviceID: Optional[str] = None
+    DeviceID: Union[int, str, None] = None
     BMSManufacturerID: Optional[int] = None
     ServerTime: Optional[float] = None

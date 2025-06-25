@@ -7,12 +7,13 @@ import subprocess
 import uuid
 from pathlib import Path
 import yaml
+import warnings
 
 # Ensure the project root is on the python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from load_preprocessdata_mcp.tools import preprocess_battery_data
-from feature_one_anamoly_detection_mcp.tools import run_anomaly_detection
+from feature_one_anamoly_detection_mcp.tools import run_hybrid_anomaly_detection
 from feature_two_timeseries_prediction_mcp.tools import predict_cell_timeseries
 from feature_three_failure_prediction_mcp.tools import run_failure_prediction
 from eda_mcp.tools import run_eda
@@ -28,6 +29,8 @@ logger = logging.getLogger("bms_master")
 
 # Setup master log
 MASTER_LOG = "bms_master.log"
+
+warnings.filterwarnings("ignore")
 
 
 def master_log(msg):
@@ -118,11 +121,40 @@ def main():
     # 4. Anomaly Detection
     logger.info("[Step 3/5] Running Anomaly Detection...")
     t0 = time.time()
-    anomaly_result = run_anomaly_detection(preprocessed_path, run_folder)
-    anomaly_results_path = anomaly_result.get("anomaly_results_path")
+    anomaly_result = run_hybrid_anomaly_detection(preprocessed_path, run_folder)
+    if (
+        not anomaly_result
+        or "anomaly_results_path" not in anomaly_result
+        or not anomaly_result["anomaly_results_path"]
+    ):
+        logger.error(f"Anomaly detection failed: {anomaly_result}")
+        raise RuntimeError(f"Anomaly detection failed: {anomaly_result}")
+    anomaly_results_path = anomaly_result["anomaly_results_path"]
     logger.info(
         f"Anomaly Detection complete. Results at: {anomaly_results_path} (Elapsed: {time.time()-t0:.2f}s)"
     )
+
+    # --- Patch: Add 'Failure' column for downstream prediction ---
+    anomaly_df = pd.read_csv(anomaly_results_path)
+    if (
+        "hybrid_anomaly" in anomaly_df.columns
+        and "Cell Temperature (°C)" in anomaly_df.columns
+    ):
+        anomaly_df["Failure"] = (
+            (anomaly_df["hybrid_anomaly"] == 1)
+            | (anomaly_df["Cell Temperature (°C)"] > 75)
+        ).astype(int)
+        anomaly_df.to_csv(anomaly_results_path, index=False)
+        logger.info(
+            "Patched anomaly results with 'Failure' column for failure prediction."
+        )
+    else:
+        logger.error(
+            "Cannot create 'Failure' column: required columns missing in anomaly results."
+        )
+        raise RuntimeError(
+            "Cannot create 'Failure' column: required columns missing in anomaly results."
+        )
 
     # 5. Time Series Forecasting
     logger.info("[Step 4/5] Running Time Series Forecasting...")
@@ -133,17 +165,28 @@ def main():
         cell_id=ts_params["cell_id_to_predict"],
         steps=ts_params["prediction_steps"],
         run_folder=run_folder,
-    )  # Use anomaly results
+    )
+    # Check for predictions CSV in timeseries_prediction folder
+    timeseries_pred_folder = run_folder / "timeseries_prediction"
+    predictions_csv = timeseries_pred_folder / "timeseries_predictions.csv"
+    if not predictions_csv.exists():
+        logger.error(f"Time series predictions CSV not found: {predictions_csv}")
+        raise RuntimeError(f"Time series predictions CSV not found: {predictions_csv}")
     logger.info(
-        f"Time Series Forecasting complete. Outputs at: {timeseries_result.get('timeseries_folder')} (Elapsed: {time.time()-t0:.2f}s)"
+        f"Time Series Forecasting complete. Outputs at: {timeseries_result.get('log_path')} (Elapsed: {time.time()-t0:.2f}s)"
     )
 
     # 6. Failure Prediction
     logger.info("[Step 5/5] Running Failure Prediction...")
     t0 = time.time()
-    failure_result = run_failure_prediction(anomaly_results_path, run_folder)
+    failure_result = run_failure_prediction(
+        data_path=anomaly_results_path, run_folder=run_folder
+    )
+    if not failure_result or "metrics_path" not in failure_result:
+        logger.error(f"Failure prediction failed: {failure_result}")
+        raise RuntimeError(f"Failure prediction failed: {failure_result}")
     logger.info(
-        f"Failure Prediction complete. Outputs at: {failure_result.get('failure_folder')} (Elapsed: {time.time()-t0:.2f}s)"
+        f"Failure Prediction complete. Outputs at: {failure_result.get('metrics_path')} (Elapsed: {time.time()-t0:.2f}s)"
     )
 
     logger.info("--- Full BMS-Flux Pipeline Finished Successfully! ---")
