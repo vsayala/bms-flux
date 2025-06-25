@@ -95,7 +95,9 @@ def validate_data(df: pd.DataFrame, num_rows_to_check: int = 100):
     sample_records = df.head(num_rows_to_check).to_dict(orient="records")
     for i, record in enumerate(sample_records):
         try:
-            BMSSchema(**record)
+            # Ensure all keys in record are strings
+            record_str_keys = {str(k): v for k, v in record.items()}
+            BMSSchema(**record_str_keys)
         except ValidationError as e:
             error_msg = f"Data validation failed on row {i+2}: {e}"
             logger.error(error_msg)

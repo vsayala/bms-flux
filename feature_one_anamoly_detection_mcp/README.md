@@ -25,10 +25,10 @@ uv run --with mcp server.py
 
 ### Example Tools
 
-- `detect_anomalies(data_path: str, chunksize: int = 100000) -> str`  
+- `detect_anomalies(data_path: str, chunksize: int = 100000) -> str`
   Runs the full anomaly detection pipeline on your battery data CSV.
 
-- `visualize_anomalies_3d(result_csv: str, ...) -> str`  
+- `visualize_anomalies_3d(result_csv: str, ...) -> str`
   Visualizes the anomalies found in 3D (Voltage, Current, Temperature).
 
 ## Customization

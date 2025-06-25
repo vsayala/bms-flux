@@ -306,27 +306,27 @@ def run_full_timeseries_pipeline(file_path, cell_id, steps=10):
     for target in target_columns:
         # Train all models
         xgb_model, xgb_metrics = train_xgboost(df, feature_columns, target)
-        prophet_model, prophet_metrics = train_prophet(df, target)
-        lstm_model, lstm_metrics = train_lstm(df, feature_columns, target)
+        _prophet_model, _prophet_metrics = train_prophet(df, target)
+        _lstm_model, _lstm_metrics = train_lstm(df, feature_columns, target)
         # Compare and select best
         metrics_list = [
             ("xgboost", xgb_metrics),
-            ("prophet", prophet_metrics),
-            ("lstm", lstm_metrics),
+            ("prophet", _prophet_metrics),
+            ("lstm", _lstm_metrics),
         ]
         # Use RMSE as main criterion
         best = min(metrics_list, key=lambda x: x[1].get("rmse", float("inf")))
         best_models[target] = best[0]
         all_metrics[target] = {
             "xgboost": xgb_metrics,
-            "prophet": prophet_metrics,
-            "lstm": lstm_metrics,
+            "prophet": _prophet_metrics,
+            "lstm": _lstm_metrics,
             "best": best[0],
         }
         all_models[target] = {
             "xgboost": str(type(xgb_model)),
-            "prophet": str(type(prophet_model)),
-            "lstm": str(type(lstm_model)),
+            "prophet": str(type(_prophet_model)),
+            "lstm": str(type(_lstm_model)),
         }
     # Save metrics and model info
     metrics_path = Path(plots_folder) / "timeseries_metrics.json"
@@ -484,24 +484,24 @@ def run_timeseries_prediction(data_path: str, run_folder: Path) -> dict:
                     continue
                 # --- Prophet (no tuning for now) ---
                 try:
-                    prophet_model, prophet_metrics = train_prophet(
+                    _prophet_model, _prophet_metrics = train_prophet(
                         cell_df_lagged, target
                     )
                 except Exception as e:
                     logging.error(
                         f"Cell {cell_id}, Target {target}: Prophet training failed: {e}"
                     )
-                    prophet_metrics = {"error": str(e)}
+                    _prophet_metrics = {"error": str(e)}
                 # --- LSTM (no tuning for now) ---
                 try:
-                    lstm_model, lstm_metrics = train_lstm(
+                    _lstm_model, _lstm_metrics = train_lstm(
                         cell_df_lagged, feature_columns, target
                     )
                 except Exception as e:
                     logging.error(
                         f"Cell {cell_id}, Target {target}: LSTM training failed: {e}"
                     )
-                    lstm_metrics = {"error": str(e)}
+                    _lstm_metrics = {"error": str(e)}
                 # --- Select best model (lowest RMSE) ---
                 best_model = xgb_model  # For now, use XGBoost as best
                 # --- Predict for 10, 15, 20 steps ---

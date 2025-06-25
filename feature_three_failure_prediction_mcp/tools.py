@@ -246,7 +246,7 @@ def run_failure_prediction(data_path: str, run_folder: Path) -> dict:
             LGBMClassifier(), lgbm_params, cv=3, scoring="f1", n_jobs=-1
         )
         lgbm_gs.fit(X, y)
-        best_lgbm = lgbm_gs.best_estimator_
+        _best_lgbm = lgbm_gs.best_estimator_
         lgbm_best_score = lgbm_gs.best_score_
         lgbm_best_params = lgbm_gs.best_params_
     # --- Select best model (highest F1) ---

@@ -15,7 +15,7 @@ logs/
 uv.lock
 
 # Data
-*.csv 
+*.csv
 data/
 data/input/
 data/output/
@@ -30,4 +30,4 @@ bms_master.log
 
 .mypy_cache/
 .pytest_cache/
-.ruff_cache/ 
+.ruff_cache/
