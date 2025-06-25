@@ -41,7 +41,7 @@ Run each step individually, or just use `preprocess_battery_data_tool` for the f
 
 ## Input Requirements
 
-- CSV with:  
+- CSV with:
   `CellVoltage`, `CellTemperature`, `InstantaneousCurrent`, `AmbientTemperature`, `CellSpecificGravity`
 
 ## Output

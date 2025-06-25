@@ -566,7 +566,7 @@ if run_folder:
     st.info(f"**Run Folder:** {run_folder}")
     config_path = Path(run_folder) / "config.yaml"
     if config_path.exists():
-        with open(config_path, "r", encoding="utf-8") as f:
+        with open(config_path, "r") as f:
             st.markdown("**Config Used:**")
             st.code(f.read(), language="yaml")
     st.markdown("**Random Seed:** 42")
@@ -578,7 +578,7 @@ if run_folder:
                 for file in files:
                     file_path = Path(folder) / file
                     zipf.write(file_path, arcname=file_path.relative_to(run_folder))
-        with open(zip_path, "rb") as f:
+        with open(zip_path, "rb") as f:  # type: ignore
             st.download_button("Download ZIP", f, file_name="artifacts.zip")
     # Rerun pipeline
     if st.button("Re-run Pipeline for this config"):
@@ -604,12 +604,13 @@ if len(selected_runs) != 2:
     st.info("Please select exactly two runs to compare.")
     st.stop()
 
-run_left, run_right = selected_runs
+run_left, run_right = selected_runs  # type: ignore[assignment]
+
 
 cols = st.columns(2)
 for idx, (run, col) in enumerate(zip([run_left, run_right], cols)):
-    with col:
-        st.markdown(f"### Run: {run}")
+    with col:  # type: ignore[attr-defined]
+        st.markdown(f"### Run: {run}")  # type: ignore[assignment]
         # --- Anomaly Section ---
         metrics_path = Path(run) / "anomaly" / "metrics.json"
         anomaly_csv_path = Path(run) / "anomaly" / "anomaly_results.csv"
@@ -655,7 +656,7 @@ for idx, (run, col) in enumerate(zip([run_left, run_right], cols)):
             )
             # Show metrics
             if metrics_path.exists():
-                with open(metrics_path) as f:
+                with open(metrics_path) as f:  # type: ignore
                     metrics = json.load(f)
                 st.markdown("#### Anomaly Metrics")
                 if metrics is not None and run is not None:
@@ -721,7 +722,7 @@ for idx, (run, col) in enumerate(zip([run_left, run_right], cols)):
             )
             # Show metrics
             if timeseries_metrics_path.exists():
-                with open(timeseries_metrics_path) as f:
+                with open(timeseries_metrics_path) as f:  # type: ignore
                     metrics = json.load(f)
                 st.markdown("#### Time Series Metrics")
                 if metrics is not None and run is not None:
@@ -766,7 +767,7 @@ for idx, (run, col) in enumerate(zip([run_left, run_right], cols)):
                     key=f"compare_{idx}_failure_pred_csv_{run}_failure",
                 )
             # Show metrics
-            with open(failure_metrics_path) as f:
+            with open(failure_metrics_path) as f:  # type: ignore
                 metrics = json.load(f)
             st.markdown("#### Failure Prediction Metrics")
             if metrics is not None and run is not None:

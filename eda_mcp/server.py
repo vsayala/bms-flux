@@ -3,6 +3,10 @@ from eda_mcp.tools import run_eda
 import shutil
 import os
 import time
+import uuid
+from pathlib import Path
+from datetime import datetime
+import tempfile
 
 app = FastAPI()
 
@@ -14,12 +18,20 @@ def run_eda_endpoint(file: UploadFile = File(...)):
     Logs all steps to both eda.log and bms_master.log.
     Returns the run folder and output files.
     """
-    # Save uploaded file to a temp location
-    temp_path = f"/tmp/{file.filename}"
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    run_id = str(uuid.uuid4())
+    run_folder = (
+        Path("runs")
+        / datetime.now().strftime("%Y/%m/%d")
+        / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}_{run_id}"
+    )
+    run_folder.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        temp_path = Path(temp_file.name)
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
     # Run EDA
-    result = run_eda(temp_path)
+    result = run_eda(str(temp_path), run_folder)
     # Log to master log
     with open("bms_master.log", "a") as f:
         f.write(

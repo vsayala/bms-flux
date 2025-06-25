@@ -7,12 +7,12 @@ This MCP server forecasts future battery cell parameters (voltage, current, temp
 - Exposes tool: `predict_cell_timeseries(data_path: str, cell_id: str, steps: int = 10)`
 - Logs are saved per-run in a unique folder.
 
-**Input:**  
+**Input:**
 - `data_path`: CSV file (must have field names as in data-generator-mcp)
 - `cell_id`: Cell to forecast
 - `steps`: How many future steps to predict
 
-**Output:**  
+**Output:**
 - Dict with metrics, predictions, plot path, job_run_id, etc.
 
 ---

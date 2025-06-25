@@ -39,7 +39,7 @@ uv run --with mcp server.py
 
 ## Input Requirements
 
-- CSV with:  
+- CSV with:
   `CellVoltage`, `CellTemperature`, `InstantaneousCurrent`, `AmbientTemperature`, `CellSpecificGravity`
 
 ## Output

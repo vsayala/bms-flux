@@ -4,10 +4,7 @@
 # from .fastmcp import FastMCP
 
 from mcp.server.fastmcp import FastMCP
-import time
-import uuid
-from pathlib import Path
-from tools import predict_cell_timeseries
+from feature_two_timeseries_prediction_mcp.tools import run_full_timeseries_pipeline
 
 mcp = FastMCP("bms_timeseries_prediction_mcp")
 
